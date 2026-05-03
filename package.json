@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
+    "postinstall": "prisma generate && prisma db push --accept-data-loss",
     "prisma:migrate": "prisma migrate dev",
     "prisma:generate": "prisma generate",
     "prisma:seed": "node prisma/seed.js",
@@ -14,6 +15,7 @@
   },
   "dependencies": {
     "@prisma/client": "^5.14.0",
+    "prisma": "^5.14.0",
     "africastalking": "^0.6.3",
     "axios": "^1.7.2",
     "bcryptjs": "^2.4.3",
@@ -28,8 +30,7 @@
     "socket.io": "^4.7.5"
   },
   "devDependencies": {
-    "nodemon": "^3.1.4",
-    "prisma": "^5.14.0"
+    "nodemon": "^3.1.4"
   },
   "prisma": {
     "seed": "node prisma/seed.js"

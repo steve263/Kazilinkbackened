@@ -126,6 +126,57 @@ function initSocket(httpServer) {
       }
     });
 
+    // ─── Audio call signaling ─────────────────────────────────────────────────
+    socket.on('call_user', (data) => {
+      const { to, from, callerName, callerRole, callerAvatar, signal } = data;
+      console.log(`📞 Call from ${from} → ${to}`);
+      io.to(to).emit('incoming_call', { from, callerName, callerRole, callerAvatar, signal });
+    });
+
+    socket.on('accept_call', (data) => {
+      console.log(`✅ Call accepted → ${data.to}`);
+      io.to(data.to).emit('call_accepted', { signal: data.signal });
+    });
+
+    socket.on('decline_call', async (data) => {
+      const declinerId = socket.userId;
+      console.log(`❌ Call declined → ${data.to}`);
+      io.to(data.to).emit('call_declined');
+      // Save missed call record
+      if (declinerId && data.to) {
+        try {
+          const msg = await prisma.message.create({
+            data: { senderId: data.to, receiverId: declinerId, content: '📞 Missed call' },
+            include: { sender: { select: { id: true, name: true } } },
+          });
+          io.to(declinerId).emit('new_message', msg);
+          io.to(data.to).emit('new_message', msg);
+        } catch {}
+      }
+    });
+
+    socket.on('end_call', async (data) => {
+      const enderId = socket.userId;
+      const { to, duration } = data || {};
+      console.log(`📵 Call ended → ${to}`);
+      if (to) io.to(to).emit('call_ended');
+      // Save call record if call was actually connected (has duration)
+      if (enderId && to && duration) {
+        try {
+          const msg = await prisma.message.create({
+            data: { senderId: enderId, receiverId: to, content: `📞 Audio call — ${duration}` },
+            include: { sender: { select: { id: true, name: true } } },
+          });
+          io.to(to).emit('new_message', msg);
+          io.to(enderId).emit('new_message', msg);
+        } catch {}
+      }
+    });
+
+    socket.on('ice_candidate', (data) => {
+      if (data.to) io.to(data.to).emit('ice_candidate', { candidate: data.candidate });
+    });
+
     // ─── Disconnect ───────────────────────────────────────────────────────────
     socket.on('disconnect', async () => {
       liveVisitorCount = Math.max(0, liveVisitorCount - 1);

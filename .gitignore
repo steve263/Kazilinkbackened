@@ -6,9 +6,6 @@ node_modules/
 .env.local
 .env.production
 
-# Prisma
-prisma/migrations/
-
 # Misc
 .DS_Store
 npm-debug.log*

@@ -2,6 +2,7 @@ const prisma = require('../config/db');
 const socketSvc = require('./socket.service');
 const smsSvc = require('./sms.service');
 const emailSvc = require('./email.service');
+const pushSvc = require('./firebase.service');
 
 // In-memory map of bookingId -> setTimeout handle for the 30-second auto-decline
 const declineTimers = new Map();
@@ -38,7 +39,16 @@ async function notifyNewBooking({ booking, providerUser, customerUser }) {
   });
 
 
-  // 3. SMS to provider
+  // 3. Push notification to provider
+  pushSvc.sendPushNotification({
+    deviceToken: providerUser.deviceToken,
+    title: '📅 New Booking Request!',
+    body: `${customerUser.name} wants ${serviceName} · KSh ${booking.totalAmount}`,
+    emoji: '📅',
+    data: { url: '/provider/notifications', bookingId: booking.id, type: 'NEW_BOOKING' },
+  }).catch(console.error);
+
+  // 4. SMS to provider
   smsSvc
     .sendSMS(
       providerUser.phone,
@@ -83,6 +93,14 @@ async function notifyNewBooking({ booking, providerUser, customerUser }) {
           bookingId: booking.id,
         });
 
+        pushSvc.sendPushNotification({
+          deviceToken: customerUser.deviceToken,
+          title: '⏰ Booking Timed Out',
+          body: 'Provider did not respond. Please try another provider.',
+          emoji: '⏰',
+          data: { url: '/discover', type: 'BOOKING_DECLINED' },
+        }).catch(console.error);
+
         smsSvc
           .sendSMS(customerUser.phone, smsSvc.tplBookingDeclinedCustomer(providerUser.name))
           .catch(console.error);
@@ -111,6 +129,14 @@ async function notifyBookingAccepted({ booking, customerUser, providerName }) {
     bookingId: booking.id,
   });
 
+  pushSvc.sendPushNotification({
+    deviceToken: customerUser.deviceToken,
+    title: '✅ Booking Accepted!',
+    body: `${providerName} accepted your request and is on the way!`,
+    emoji: '✅',
+    data: { url: '/profile', bookingId: booking.id, type: 'BOOKING_ACCEPTED' },
+  }).catch(console.error);
+
   smsSvc
     .sendSMS(customerUser.phone, smsSvc.tplBookingAcceptedCustomer(providerName, booking.scheduledTime))
     .catch(console.error);
@@ -131,6 +157,14 @@ async function notifyBookingDeclined({ booking, customerUser, providerName }) {
     bookingId: booking.id,
   });
 
+  pushSvc.sendPushNotification({
+    deviceToken: customerUser.deviceToken,
+    title: '❌ Booking Declined',
+    body: `${providerName} is not available. Try another provider.`,
+    emoji: '❌',
+    data: { url: '/discover', bookingId: booking.id, type: 'BOOKING_DECLINED' },
+  }).catch(console.error);
+
   smsSvc
     .sendSMS(customerUser.phone, smsSvc.tplBookingDeclinedCustomer(providerName))
     .catch(console.error);
@@ -138,7 +172,7 @@ async function notifyBookingDeclined({ booking, customerUser, providerName }) {
 
 // ─── Payment received (both parties) ──────────────────────────────────────────
 
-async function notifyPaymentReceived({ booking, customerUser, providerUserId, amount, mpesaRef }) {
+async function notifyPaymentReceived({ booking, customerUser, providerUserId, providerDeviceToken, amount, mpesaRef }) {
   // Socket to provider
   socketSvc.emitPaymentReceived(providerUserId, { bookingId: booking.id, amount, mpesaRef });
 
@@ -150,6 +184,24 @@ async function notifyPaymentReceived({ booking, customerUser, providerUserId, am
     body: `KSh ${amount} received. Ref: ${mpesaRef}`,
     bookingId: booking.id,
   });
+
+  // Push to customer
+  pushSvc.sendPushNotification({
+    deviceToken: customerUser.deviceToken,
+    title: '💚 Payment Confirmed!',
+    body: `KSh ${amount} received. Ref: ${mpesaRef}`,
+    emoji: '💚',
+    data: { url: '/profile', type: 'PAYMENT_RECEIVED' },
+  }).catch(console.error);
+
+  // Push to provider
+  pushSvc.sendPushNotification({
+    deviceToken: providerDeviceToken,
+    title: '💰 Payment Received!',
+    body: `KSh ${amount} received for your service. Ref: ${mpesaRef}`,
+    emoji: '💰',
+    data: { url: '/provider/notifications', type: 'PAYMENT_RECEIVED' },
+  }).catch(console.error);
 
   smsSvc
     .sendSMS(customerUser.phone, smsSvc.tplPaymentConfirmed(amount, mpesaRef))
@@ -207,6 +259,14 @@ async function notifyJobCompleted({ booking, customerUser, providerName, provide
     bookingId: booking.id,
   });
 
+  pushSvc.sendPushNotification({
+    deviceToken: customerUser.deviceToken,
+    title: '🎉 Job Complete!',
+    body: `Your job with ${providerName} is done. Please leave a review!`,
+    emoji: '🎉',
+    data: { url: '/profile', bookingId: booking.id, type: 'BOOKING_COMPLETED' },
+  }).catch(console.error);
+
   smsSvc
     .sendSMS(customerUser.phone, smsSvc.tplJobCompletedCustomer(providerName))
     .catch(console.error);
@@ -249,6 +309,15 @@ async function notifyNewOrder({ booking, providerUser, customerUser }) {
     body: `${serviceName} — KSh ${booking.totalAmount}. Respond within 20 seconds.`,
     bookingId: booking.id,
   });
+
+  // Push to provider
+  pushSvc.sendPushNotification({
+    deviceToken: providerUser.deviceToken,
+    title: '🛒 New Order!',
+    body: `${customerUser.name} — ${serviceName} · KSh ${booking.totalAmount}. Respond within 20s.`,
+    emoji: '🛒',
+    data: { url: '/provider/notifications', bookingId: booking.id, type: 'NEW_BOOKING' },
+  }).catch(console.error);
 
   // SMS to provider
   smsSvc.sendSMS(

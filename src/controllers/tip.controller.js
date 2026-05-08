@@ -2,13 +2,9 @@ const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 const emailSvc = require('../services/email.service');
 
-const IMAGE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
-function imageExpired(createdAt) {
-  return Date.now() - new Date(createdAt).getTime() > IMAGE_TTL_MS;
-}
-function expireCoverImage(tip) {
-  return { ...tip, coverImage: imageExpired(tip.createdAt) ? null : tip.coverImage };
-}
+const EXPIRY_MS = 24 * 60 * 60 * 1000;
+const activeAfter = () => new Date(Date.now() - EXPIRY_MS);
+const addExpiry = (t) => ({ ...t, expiresAt: new Date(new Date(t.createdAt).getTime() + EXPIRY_MS).toISOString() });
 
 // POST - Submit tip (logged in user)
 exports.createTip = async (req, res) => {
@@ -61,7 +57,7 @@ exports.createTip = async (req, res) => {
 exports.getApprovedTips = async (req, res) => {
   try {
     const { category, sort = 'latest', skip = 0, limit = 10 } = req.query;
-    const where = { status: 'APPROVED' };
+    const where = { status: 'APPROVED', createdAt: { gt: activeAfter() } };
     if (category) where.category = category;
 
     let orderBy = { createdAt: 'desc' };
@@ -80,7 +76,7 @@ exports.getApprovedTips = async (req, res) => {
 
     res.json({
       success: true,
-      data: tips.map(expireCoverImage),
+      data: tips.map(addExpiry),
       pagination: { skip: parseInt(skip), limit: parseInt(limit), total },
     });
   } catch (error) {
@@ -93,13 +89,20 @@ exports.getTipById = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const tip = await prisma.tip.update({
+    const tip = await prisma.tip.findUnique({ where: { id } });
+    if (!tip) return res.status(404).json({ success: false, message: 'Tip not found' });
+
+    if (new Date(tip.createdAt).getTime() + EXPIRY_MS < Date.now()) {
+      return res.status(410).json({ success: false, message: 'This guide has expired and is no longer available' });
+    }
+
+    const updated = await prisma.tip.update({
       where: { id },
       data: { views: { increment: 1 } },
       include: { author: true, comments: { include: { user: true } } },
     });
 
-    res.json({ success: true, data: expireCoverImage(tip) });
+    res.json({ success: true, data: addExpiry(updated) });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -115,7 +118,7 @@ exports.getMyTips = async (req, res) => {
       orderBy: { createdAt: 'desc' },
     });
 
-    res.json({ success: true, data: tips });
+    res.json({ success: true, data: tips.map(addExpiry) });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

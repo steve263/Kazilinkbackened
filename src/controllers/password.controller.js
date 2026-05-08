@@ -9,12 +9,19 @@ function generateOTP() {
   return String(Math.floor(100000 + Math.random() * 900000));
 }
 
+function normalizePhone(raw) {
+  let p = raw.replace(/\s+/g, '');
+  if (p.startsWith('0')) p = '+254' + p.slice(1);
+  else if (p.startsWith('254') && !p.startsWith('+')) p = '+' + p;
+  return p;
+}
+
 async function forgotPassword(req, res) {
   try {
     const { phone } = req.body;
     if (!phone) return res.status(400).json({ success: false, message: 'phone is required' });
 
-    const normalPhone = phone.replace(/\s/g, '');
+    const normalPhone = normalizePhone(phone);
     const user = await prisma.user.findUnique({ where: { phone: normalPhone } });
     if (!user) {
       return res.status(404).json({ success: false, message: 'No account found with that phone number' });
@@ -38,7 +45,7 @@ async function verifyOTP(req, res) {
     const { phone, otp } = req.body;
     if (!phone || !otp) return res.status(400).json({ success: false, message: 'phone and otp are required' });
 
-    const normalPhone = phone.replace(/\s/g, '');
+    const normalPhone = normalizePhone(phone);
     const record = otpStore.get(normalPhone);
 
     if (!record) return res.status(400).json({ success: false, message: 'No OTP requested for this number. Please request a new code.' });
@@ -62,7 +69,7 @@ async function resetPassword(req, res) {
     if (!phone || !password) return res.status(400).json({ success: false, message: 'phone and password are required' });
     if (password.length < 6) return res.status(400).json({ success: false, message: 'Password must be at least 6 characters' });
 
-    const normalPhone = phone.replace(/\s/g, '');
+    const normalPhone = normalizePhone(phone);
     const record = otpStore.get(normalPhone);
 
     if (!record || !record.verified) {

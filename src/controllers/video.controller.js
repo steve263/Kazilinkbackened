@@ -1,6 +1,10 @@
 const prisma = require('../config/db');
 const { cloudinary } = require('../middleware/upload');
 
+const EXPIRY_MS = 24 * 60 * 60 * 1000;
+const activeAfter = () => new Date(Date.now() - EXPIRY_MS);
+const addExpiry = (v) => ({ ...v, expiresAt: new Date(new Date(v.createdAt).getTime() + EXPIRY_MS).toISOString() });
+
 const VIDEO_USER_SELECT = {
   id: true,
   name: true,
@@ -16,7 +20,7 @@ async function getVideos(req, res) {
   try {
     const { type, hashtag, limit = 20, offset = 0 } = req.query;
 
-    const where = {};
+    const where = { createdAt: { gt: activeAfter() } };
     if (type === 'fundi') {
       where.user = { provider: { category: 'FUNDI' } };
     } else if (type === 'business') {
@@ -51,11 +55,11 @@ async function getVideos(req, res) {
       const likedSet = new Set(myLikes.map((l) => l.videoId));
       return res.json({
         success: true,
-        data: videos.map((v) => ({ ...v, likedByMe: likedSet.has(v.id) })),
+        data: videos.map((v) => addExpiry({ ...v, likedByMe: likedSet.has(v.id) })),
       });
     }
 
-    res.json({ success: true, data: videos.map((v) => ({ ...v, likedByMe: false })) });
+    res.json({ success: true, data: videos.map((v) => addExpiry({ ...v, likedByMe: false })) });
   } catch (err) {
     console.error('❌ getVideos error:', err.message);
     res.status(500).json({ success: false, message: err.message });
@@ -103,7 +107,7 @@ async function postVideo(req, res) {
     });
 
     console.log(`🎬 Video posted by ${req.user.name}`);
-    res.status(201).json({ success: true, data: { ...video, likedByMe: false } });
+    res.status(201).json({ success: true, data: addExpiry({ ...video, likedByMe: false }) });
   } catch (err) {
     console.error('❌ postVideo error:', err.message);
     res.status(500).json({ success: false, message: err.message });
@@ -127,7 +131,7 @@ async function getMyVideos(req, res) {
       select: { videoId: true },
     });
     const likedSet = new Set(myLikes.map((l) => l.videoId));
-    res.json({ success: true, data: videos.map((v) => ({ ...v, likedByMe: likedSet.has(v.id) })) });
+    res.json({ success: true, data: videos.map((v) => addExpiry({ ...v, likedByMe: likedSet.has(v.id) })) });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }

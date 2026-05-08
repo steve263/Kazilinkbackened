@@ -150,6 +150,7 @@ model User {
   referralsGiven       Referral[]     @relation("ReferrerReferrals")
   referralsReceived    Referral[]     @relation("ReferredReferrals")
   rewards              Reward[]
+  waitlistEntries      ProviderWaitlist[]
 }
 
 model Provider {
@@ -182,6 +183,9 @@ model Provider {
   walletBalance      Float              @default(0)
   totalEarned        Float              @default(0)
 
+  isBusy          Boolean   @default(false)
+  busySince       DateTime?
+
   services        Service[]
   bookings        Booking[]        @relation("ProviderBookings")
   reviews         Review[]         @relation("ProviderReviews")
@@ -193,6 +197,21 @@ model Provider {
   withdrawals     Withdrawal[]
   videos          Video[]
   promotions      Promotion[]
+  waitlist        ProviderWaitlist[]
+}
+
+model ProviderWaitlist {
+  id         String    @id @default(cuid())
+  providerId String
+  provider   Provider  @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  customerId String
+  customer   User      @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  serviceId  String?
+  notified   Boolean   @default(false)
+  notifiedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@unique([providerId, customerId, notified])
 }
 
 model Service {

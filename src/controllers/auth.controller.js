@@ -13,6 +13,12 @@ function sanitize(user) {
   return safe;
 }
 
+function generateReferralCode(name) {
+  const namePart = name.replace(/\s+/g, '').toUpperCase().slice(0, 5);
+  const randPart = Math.random().toString(36).substring(2, 6).toUpperCase();
+  return `${namePart}${randPart}`;
+}
+
 async function register(req, res) {
   try {
     const {
@@ -20,6 +26,7 @@ async function register(req, res) {
       profilePhoto, idPhotoUrl, idBackPhotoUrl, portfolioPhotos, coverImage, profileImage,
       description, workingHoursStart, workingHoursEnd, services,
       skills, yearsExperience, education, certificates, portfolioVideoUrl, portfolioVideoPublicId,
+      referralCode: incomingReferralCode,
     } = req.body;
 
     if (!phone || !name) {
@@ -118,6 +125,59 @@ async function register(req, res) {
       },
       include: { provider: { include: { services: true } } },
     });
+
+    // Assign a unique referral code
+    let referralCode;
+    let attempts = 0;
+    do {
+      referralCode = generateReferralCode(name);
+      attempts++;
+    } while (attempts < 10 && await prisma.user.findUnique({ where: { referralCode } }));
+
+    await prisma.user.update({ where: { id: user.id }, data: { referralCode } });
+
+    // Handle incoming referral code
+    if (incomingReferralCode) {
+      const referrer = await prisma.user.findUnique({ where: { referralCode: incomingReferralCode } });
+      if (referrer && referrer.id !== user.id) {
+        const notificationSvc = require('../services/notification.service');
+        await prisma.referral.create({
+          data: {
+            referrerId: referrer.id,
+            referredId: user.id,
+            code: incomingReferralCode,
+            status: 'REGISTERED',
+          },
+        });
+
+        await prisma.reward.create({
+          data: {
+            userId: user.id,
+            type: 'FIRST_BOOKING_DISCOUNT',
+            amount: 100,
+            description: `KSh 100 off your first booking! Referred by ${referrer.name}`,
+            status: 'ACTIVE',
+            expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+          },
+        });
+
+        notificationSvc.createNotification({
+          userId: user.id,
+          type: 'SYSTEM',
+          title: '🎁 Welcome Bonus!',
+          body: `You have KSh 100 off your first booking thanks to ${referrer.name}!`,
+        }).catch(console.error);
+
+        notificationSvc.createNotification({
+          userId: referrer.id,
+          type: 'SYSTEM',
+          title: '🎉 Referral Registered!',
+          body: `${name} just registered using your referral link! You will earn KSh 200 when they complete their first booking.`,
+        }).catch(console.error);
+
+        console.log(`🎁 Referral registered: ${referrer.name} referred ${name}`);
+      }
+    }
 
     const token = generateToken(user);
     console.log(`✅ Registered: ${user.name} (${user.role}) — ${user.phone}`);

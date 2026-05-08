@@ -2,6 +2,10 @@ const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 const emailSvc = require('../services/email.service');
 
+const EXPIRY_MS = 24 * 60 * 60 * 1000;
+const activeAfter = () => new Date(Date.now() - EXPIRY_MS);
+const addExpiry = (t) => ({ ...t, expiresAt: new Date(new Date(t.createdAt).getTime() + EXPIRY_MS).toISOString() });
+
 // POST - Submit testimonial (customer auth required)
 exports.submitTestimonial = async (req, res) => {
   try {
@@ -57,7 +61,7 @@ exports.submitTestimonial = async (req, res) => {
 exports.getApprovedTestimonials = async (req, res) => {
   try {
     const { category, skip = 0, limit = 10 } = req.query;
-    const where = { status: 'APPROVED' };
+    const where = { status: 'APPROVED', createdAt: { gt: activeAfter() } };
     if (category) where.category = category;
 
     const testimonials = await prisma.testimonial.findMany({
@@ -72,7 +76,7 @@ exports.getApprovedTestimonials = async (req, res) => {
 
     res.json({
       success: true,
-      data: testimonials,
+      data: testimonials.map(addExpiry),
       pagination: { skip: parseInt(skip), limit: parseInt(limit), total },
     });
   } catch (error) {

@@ -20,4 +20,13 @@ router.post('/public-document', uploadDoc.single('file'), ctrl.uploadDocument);
 router.post('/video', auth, uploadVideo.single('video'), ctrl.uploadVideoFile);
 router.post('/public-video', uploadVideo.single('video'), ctrl.uploadVideoFile);
 
+// Catch multer / Cloudinary errors and return JSON instead of crashing
+router.use((err, req, res, next) => {
+  console.error('📁 Upload error:', err.message || err);
+  res.status(err.http_code || err.status || 400).json({
+    success: false,
+    message: err.message || 'Upload failed',
+  });
+});
+
 module.exports = router;

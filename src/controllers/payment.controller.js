@@ -127,6 +127,7 @@ async function mpesaCallback(req, res) {
       booking: updatedBooking,
       customerUser: payment.booking.customer,
       providerUserId: updatedBooking.provider.user.id,
+      providerDeviceToken: updatedBooking.provider.user.deviceToken,
       amount,
       mpesaRef,
     }).catch(console.error);

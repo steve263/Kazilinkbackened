@@ -21,6 +21,7 @@ const PROVIDER_SELECT = {
   },
   services: { where: { isActive: true }, take: 3 },
   promotions: { where: activePromoWhere, orderBy: { endDate: 'asc' }, take: 1 },
+  _count: { select: { waitlist: { where: { notified: false } } } },
 };
 
 async function getProviders(req, res) {

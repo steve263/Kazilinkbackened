@@ -114,37 +114,42 @@ enum WithdrawalStatus {
 }
 
 model User {
-  id           String   @id @default(cuid())
-  phone        String   @unique
-  email        String?  @unique
-  password     String
-  role         Role     @default(CUSTOMER)
-  name         String
-  location     String?
-  lat          Float?
-  lng          Float?
-  profilePhoto String?
-  deviceToken  String?
-  isOnline     Boolean  @default(false)
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now())
+  id            String   @id @default(cuid())
+  phone         String   @unique
+  email         String?  @unique
+  password      String
+  role          Role     @default(CUSTOMER)
+  name          String
+  location      String?
+  lat           Float?
+  lng           Float?
+  profilePhoto  String?
+  deviceToken   String?
+  isOnline      Boolean  @default(false)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  referralCode  String?  @unique
+  totalRewards  Float    @default(0)
 
-  provider           Provider?
-  bookingsAsCustomer Booking[]      @relation("CustomerBookings")
-  notifications      Notification[]
-  sentMessages       Message[]      @relation("SentMessages")
-  receivedMessages   Message[]      @relation("ReceivedMessages")
-  reviews            Review[]       @relation("CustomerReviews")
-  comments           Comment[]
-  likes              Like[]
-  following          Follow[]       @relation("Follower")
-  testimonials       Testimonial[]
-  tips               Tip[]
-  tipComments        TipComment[]
-  videos             Video[]
-  videoComments      VideoComment[]
-  videoReports       VideoReport[]
-  videoLikes         VideoLike[]
+  provider             Provider?
+  bookingsAsCustomer   Booking[]      @relation("CustomerBookings")
+  notifications        Notification[]
+  sentMessages         Message[]      @relation("SentMessages")
+  receivedMessages     Message[]      @relation("ReceivedMessages")
+  reviews              Review[]       @relation("CustomerReviews")
+  comments             Comment[]
+  likes                Like[]
+  following            Follow[]       @relation("Follower")
+  testimonials         Testimonial[]
+  tips                 Tip[]
+  tipComments          TipComment[]
+  videos               Video[]
+  videoComments        VideoComment[]
+  videoReports         VideoReport[]
+  videoLikes           VideoLike[]
+  referralsGiven       Referral[]     @relation("ReferrerReferrals")
+  referralsReceived    Referral[]     @relation("ReferredReferrals")
+  rewards              Reward[]
 }
 
 model Provider {
@@ -187,6 +192,7 @@ model Provider {
   portfolioVideos PortfolioVideo[]
   withdrawals     Withdrawal[]
   videos          Video[]
+  promotions      Promotion[]
 }
 
 model Service {
@@ -472,4 +478,73 @@ model VideoLike {
   createdAt DateTime @default(now())
 
   @@unique([videoId, userId])
+}
+
+enum ReferralStatus {
+  PENDING
+  REGISTERED
+  COMPLETED
+  REWARDED
+}
+
+enum RewardType {
+  REFERRAL_BONUS
+  FIRST_BOOKING_DISCOUNT
+  LOYALTY_BONUS
+  PROMO_CODE
+}
+
+enum RewardStatus {
+  PENDING
+  ACTIVE
+  USED
+  EXPIRED
+}
+
+model Referral {
+  id             String         @id @default(cuid())
+  referrerId     String
+  referrer       User           @relation("ReferrerReferrals", fields: [referrerId], references: [id])
+  referredId     String?
+  referred       User?          @relation("ReferredReferrals", fields: [referredId], references: [id])
+  code           String         @unique
+  status         ReferralStatus @default(PENDING)
+  rewardAmount   Float          @default(200)
+  discountAmount Float          @default(100)
+  rewardPaid     Boolean        @default(false)
+  createdAt      DateTime       @default(now())
+  completedAt    DateTime?
+}
+
+enum DiscountType {
+  PERCENTAGE
+  FIXED
+}
+
+model Promotion {
+  id           String        @id @default(cuid())
+  providerId   String
+  provider     Provider      @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  title        String
+  description  String?
+  discountType DiscountType  @default(PERCENTAGE)
+  discountValue Float
+  startDate    DateTime      @default(now())
+  endDate      DateTime
+  isActive     Boolean       @default(true)
+  createdAt    DateTime      @default(now())
+}
+
+model Reward {
+  id          String       @id @default(cuid())
+  userId      String
+  user        User         @relation(fields: [userId], references: [id])
+  type        RewardType
+  amount      Float
+  description String
+  status      RewardStatus @default(PENDING)
+  referralId  String?
+  expiresAt   DateTime?
+  createdAt   DateTime     @default(now())
+  usedAt      DateTime?
 }

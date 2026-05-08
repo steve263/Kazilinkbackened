@@ -13,11 +13,14 @@ function distanceKm(lat1, lng1, lat2, lng2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+const activePromoWhere = { isActive: true, endDate: { gt: new Date() }, startDate: { lte: new Date() } };
+
 const PROVIDER_SELECT = {
   user: {
     select: { id: true, name: true, phone: true, isOnline: true, lat: true, lng: true, location: true },
   },
   services: { where: { isActive: true }, take: 3 },
+  promotions: { where: activePromoWhere, orderBy: { endDate: 'asc' }, take: 1 },
 };
 
 async function getProviders(req, res) {
@@ -62,6 +65,7 @@ async function getProvider(req, res) {
       include: {
         user: { select: { id: true, name: true, phone: true, isOnline: true, lat: true, lng: true, location: true } },
         services: { where: { isActive: true } },
+        promotions: { where: activePromoWhere, orderBy: { endDate: 'asc' } },
         reviews: {
           include: { customer: { select: { name: true } } },
           orderBy: { createdAt: 'desc' },
@@ -346,9 +350,26 @@ async function deleteService(req, res) {
   }
 }
 
+async function getMyProvider(req, res) {
+  try {
+    const provider = await prisma.provider.findUnique({
+      where: { userId: req.user.id },
+      include: {
+        services: { where: { isActive: true } },
+        user: { select: { id: true, name: true, phone: true, email: true, profilePhoto: true } },
+      },
+    });
+    if (!provider) return res.status(404).json({ success: false, message: 'Provider profile not found' });
+    res.json({ success: true, data: provider });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
 module.exports = {
   getProviders,
   getProvider,
+  getMyProvider,
   updateProvider,
   toggleOnline,
   updateLocation,

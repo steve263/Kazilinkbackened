@@ -3,9 +3,13 @@ const express = require('express');
 const http = require('http');
 const cors = require('cors');
 const { initSocket } = require('./config/socket');
+const { initFirebase } = require('./config/firebase');
 
 const app = express();
 const server = http.createServer(app);
+
+// ─── Firebase Admin ───────────────────────────────────────────────────────────
+if (process.env.FIREBASE_SERVICE_ACCOUNT) initFirebase();
 
 // ─── Socket.io (must init before routes so services can call getIo) ───────────
 initSocket(server);
@@ -35,6 +39,7 @@ app.get('/', (req, res) => {
       testimonials:  '/api/testimonials',
       tips:          '/api/tips',
       videos:        '/api/videos',
+      referrals:     '/api/referrals',
       health:        '/health',
     },
   });
@@ -60,6 +65,8 @@ app.use('/api/testimonials',  require('./routes/testimonial.routes'));
 app.use('/api/tips',          require('./routes/tip.routes'));
 app.use('/api/stats',         require('./routes/stats.routes'));
 app.use('/api/videos',        require('./routes/video.routes'));
+app.use('/api/referrals',     require('./routes/referral.routes'));
+app.use('/api/promotions',    require('./routes/promotion.routes'));
 
 // Review routes (convenience aliases at /api/reviews)
 const { auth: _auth, requireRole: _role } = require('./middleware/auth');
@@ -97,7 +104,9 @@ app.use((req, res) => {
 // ─── Global error handler ──────────────────────────────────────────────────────
 app.use((err, req, res, next) => {
   console.error('💥 Unhandled error:', err);
-  res.status(500).json({ success: false, message: 'Internal server error' });
+  const status = err.http_code || err.status || err.statusCode || 500;
+  const message = err.message || 'Internal server error';
+  res.status(status).json({ success: false, message });
 });
 
 // ─── Start ─────────────────────────────────────────────────────────────────────

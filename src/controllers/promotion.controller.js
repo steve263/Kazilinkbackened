@@ -4,7 +4,7 @@ const now = () => new Date();
 
 async function createPromotion(req, res) {
   try {
-    const { title, description, discountType, discountValue, endDate } = req.body;
+    const { title, description, discountType, discountValue, endDate, imageUrl, originalPrice } = req.body;
     if (!title || !discountValue || !endDate) {
       return res.status(400).json({ success: false, message: 'title, discountValue and endDate are required' });
     }
@@ -15,9 +15,11 @@ async function createPromotion(req, res) {
       data: {
         providerId: provider.id,
         title,
-        description,
+        description: description || null,
+        imageUrl: imageUrl || null,
         discountType: discountType || 'PERCENTAGE',
         discountValue: parseFloat(discountValue),
+        originalPrice: originalPrice ? parseInt(originalPrice) : null,
         endDate: new Date(endDate),
       },
     });

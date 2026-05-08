@@ -546,11 +546,14 @@ model Promotion {
   provider     Provider      @relation(fields: [providerId], references: [id], onDelete: Cascade)
   title        String
   description  String?
+  imageUrl     String?
   discountType DiscountType  @default(PERCENTAGE)
   discountValue Float
+  originalPrice Int?
   startDate    DateTime      @default(now())
   endDate      DateTime
   isActive     Boolean       @default(true)
+  bookingCount Int           @default(0)
   createdAt    DateTime      @default(now())
 }
 

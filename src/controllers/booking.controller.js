@@ -36,8 +36,8 @@ async function createBooking(req, res) {
         success: false,
         message: 'PROVIDER_BUSY',
         data: {
-          providerName: provider.businessName,
-          providerId: provider.id,
+          id: provider.id,
+          businessName: provider.businessName,
           category: provider.category,
           profileImage: provider.profileImage,
         },

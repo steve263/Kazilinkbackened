@@ -27,7 +27,7 @@ async function register(req, res) {
     }
 
     // If no password provided, default to last 6 digits of phone
-    const normalPhone = phone.replace(/\s/g, '');
+    const normalPhone = normalizePhone(phone);
     let resolvedPassword = (password || '').trim();
     let usedDefaultPassword = false;
     if (!resolvedPassword || resolvedPassword.length < 6) {
@@ -145,6 +145,13 @@ async function register(req, res) {
   }
 }
 
+function normalizePhone(raw) {
+  let p = raw.replace(/\s+/g, '');
+  if (p.startsWith('0')) p = '+254' + p.slice(1);
+  else if (p.startsWith('254') && !p.startsWith('+')) p = '+' + p;
+  return p;
+}
+
 async function login(req, res) {
   try {
     const { phone, password } = req.body;
@@ -153,10 +160,19 @@ async function login(req, res) {
       return res.status(400).json({ success: false, message: 'phone and password are required' });
     }
 
-    const user = await prisma.user.findUnique({
-      where: { phone },
+    const normalized = normalizePhone(phone);
+
+    // Try normalized form first, then exact match as fallback (handles legacy accounts)
+    let user = await prisma.user.findUnique({
+      where: { phone: normalized },
       include: { provider: true },
     });
+    if (!user && normalized !== phone.replace(/\s+/g, '')) {
+      user = await prisma.user.findUnique({
+        where: { phone: phone.replace(/\s+/g, '') },
+        include: { provider: true },
+      });
+    }
 
     if (!user || !(await bcrypt.compare(password, user.password))) {
       return res.status(401).json({ success: false, message: 'Invalid phone or password' });

@@ -29,7 +29,7 @@ async function aiChat(req, res) {
       return res.status(400).json({ success: false, message: 'messages array is required' });
     }
 
-    const apiKey = process.env.OPENAI_API_KEY;
+    const apiKey = process.env.GROQ_API_KEY;
     if (!apiKey) {
       return res.status(503).json({
         success: false,
@@ -44,9 +44,9 @@ async function aiChat(req, res) {
     }));
 
     const response = await axios.post(
-      'https://api.openai.com/v1/chat/completions',
+      'https://api.groq.com/openai/v1/chat/completions',
       {
-        model: 'gpt-4o-mini',
+        model: 'llama-3.1-8b-instant',
         max_tokens: 512,
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
@@ -68,11 +68,10 @@ async function aiChat(req, res) {
 
     res.json({ success: true, data: { reply } });
   } catch (err) {
-    const detail = err.response?.data?.error?.message || err.response?.data || err.message;
-    console.error('❌ AI chat error:', detail);
+    console.error('❌ AI chat error:', err.response?.data || err.message);
     res.status(500).json({
       success: false,
-      message: `OpenAI error: ${JSON.stringify(detail)}`,
+      message: 'AI support unavailable. Please contact us on WhatsApp: +254795542312 or +254731421635',
     });
   }
 }

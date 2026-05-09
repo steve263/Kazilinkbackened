@@ -40,6 +40,7 @@ app.get('/', (req, res) => {
       tips:          '/api/tips',
       videos:        '/api/videos',
       referrals:     '/api/referrals',
+      support:       '/api/support',
       health:        '/health',
     },
   });
@@ -68,6 +69,7 @@ app.use('/api/videos',        require('./routes/video.routes'));
 app.use('/api/referrals',     require('./routes/referral.routes'));
 app.use('/api/promotions',    require('./routes/promotion.routes'));
 app.use('/api/trust',         require('./routes/trust.routes'));
+app.use('/api/support',       require('./routes/support.routes'));
 
 // Review routes (convenience aliases at /api/reviews)
 const { auth: _auth, requireRole: _role } = require('./middleware/auth');

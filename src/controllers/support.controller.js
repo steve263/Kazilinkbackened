@@ -19,7 +19,7 @@ How to help:
 - Provider issues: how to register, manage services, pricing, availability
 - Trust & Safety: how to report a bad provider, fraud, dispute resolution
 
-Tone: Friendly, concise, helpful. Occasionally use Swahili words (e.g., "Karibu!", "Asante sana", "Sawa!"). Keep answers short and practical. If you cannot resolve something, offer to connect to a human agent via WhatsApp.`;
+Tone: Friendly, concise, helpful. Always respond in English only. Keep answers short and practical. If you cannot resolve something, offer to connect to a human agent via WhatsApp.`;
 
 async function aiChat(req, res) {
   try {

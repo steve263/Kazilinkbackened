@@ -1,4 +1,4 @@
--- CreateEnum TrustLevel (safe for any PG version)
+-- CreateEnum TrustLevel
 DO $$ BEGIN
     CREATE TYPE "TrustLevel" AS ENUM ('NEW', 'BASIC', 'TRUSTED', 'VERIFIED', 'ELITE', 'SUSPENDED');
 EXCEPTION WHEN duplicate_object THEN NULL;
@@ -34,7 +34,7 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
--- AlterTable: add isSuspended (IF NOT EXISTS is fine for ALTER TABLE in PG 9.6+)
+-- Add isSuspended to User
 ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "isSuspended" BOOLEAN NOT NULL DEFAULT false;
 
 -- CreateTable TrustScore
@@ -101,7 +101,7 @@ CREATE TABLE IF NOT EXISTS "VerificationRequest" (
 -- CreateIndex
 CREATE UNIQUE INDEX IF NOT EXISTS "TrustScore_userId_key" ON "TrustScore"("userId");
 
--- AddForeignKeys (idempotent via DO blocks)
+-- AddForeignKeys
 DO $$ BEGIN
     ALTER TABLE "TrustScore" ADD CONSTRAINT "TrustScore_userId_fkey"
         FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;

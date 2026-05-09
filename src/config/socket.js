@@ -23,23 +23,20 @@ function initSocket(httpServer) {
     console.log('🔌 Socket connected:', socket.id);
 
     // ─── Room join ────────────────────────────────────────────────────────────
-    socket.on('join', async (userId) => {
+    const handleJoin = async (userId) => {
       socket.join(userId);
       socket.userId = userId;
-
       if (!connectedUsers.has(userId)) connectedUsers.set(userId, new Set());
       connectedUsers.get(userId).add(socket.id);
-
-      // Mark online on first connection for this user
       if (connectedUsers.get(userId).size === 1) {
-        try {
-          await prisma.user.update({ where: { id: userId }, data: { isOnline: true } });
-        } catch {}
+        try { await prisma.user.update({ where: { id: userId }, data: { isOnline: true } }); } catch {}
         socket.broadcast.emit('user_online', { userId });
       }
-
       console.log(`👤 User ${userId} joined their room`);
-    });
+    };
+
+    socket.on('join', handleJoin);
+    socket.on('join_room', handleJoin);
 
     // ─── Provider-specific events (existing) ─────────────────────────────────
     socket.on('provider_online', async ({ userId }) => {

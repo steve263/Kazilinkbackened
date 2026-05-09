@@ -1,25 +1,40 @@
+require('dotenv').config();
 const { execSync } = require('child_process');
-const { PrismaClient } = require('@prisma/client');
+const { Client } = require('pg');
 
-const FAILED_MIGRATION = '20260510100000_add_trust_fraud_system';
+const MIGRATION_NAME = '20260510100000_add_trust_fraud_system';
 
 async function main() {
-  const prisma = new PrismaClient();
+  console.log('[pre-deploy] Starting...');
+
+  // Use direct URL (bypasses PgBouncer) if available, else fall back to DATABASE_URL
+  const connectionString = process.env.DIRECT_URL || process.env.DATABASE_URL;
+  console.log('[pre-deploy] Connecting to DB...');
+
+  const isLocal = connectionString.includes('localhost') || connectionString.includes('127.0.0.1');
+  const client = new Client({
+    connectionString,
+    ssl: isLocal ? false : { rejectUnauthorized: false },
+  });
+
   try {
-    // Directly delete the failed migration row so prisma migrate deploy can re-run it
-    const deleted = await prisma.$executeRawUnsafe(
+    await client.connect();
+    console.log('[pre-deploy] Connected. Clearing failed migration record...');
+
+    const res = await client.query(
       `DELETE FROM "_prisma_migrations" WHERE migration_name = $1 AND finished_at IS NULL`,
-      FAILED_MIGRATION
+      [MIGRATION_NAME]
     );
-    if (deleted > 0) {
-      console.log(`[pre-deploy] Cleared failed migration record: ${FAILED_MIGRATION}`);
+
+    if (res.rowCount > 0) {
+      console.log(`[pre-deploy] Cleared ${res.rowCount} failed migration record(s) for: ${MIGRATION_NAME}`);
     } else {
-      console.log('[pre-deploy] No failed migration record found — nothing to clear.');
+      console.log('[pre-deploy] No failed migration record found — already clean.');
     }
   } catch (err) {
-    console.log('[pre-deploy] Migration table check skipped:', err.message);
+    console.log('[pre-deploy] DB step note:', err.message);
   } finally {
-    await prisma.$disconnect();
+    await client.end().catch(() => {});
   }
 
   console.log('[pre-deploy] Running prisma migrate deploy...');
@@ -28,6 +43,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error('[pre-deploy] Fatal error:', err.message);
+  console.error('[pre-deploy] Fatal:', err.message);
   process.exit(1);
 });

@@ -68,10 +68,11 @@ async function aiChat(req, res) {
 
     res.json({ success: true, data: { reply } });
   } catch (err) {
-    console.error('❌ AI chat error:', err.response?.data || err.message);
+    const detail = err.response?.data?.error?.message || err.response?.data || err.message;
+    console.error('❌ AI chat error:', detail);
     res.status(500).json({
       success: false,
-      message: 'AI support unavailable. Please contact us on WhatsApp: +254795542312 or +254731421635',
+      message: `OpenAI error: ${JSON.stringify(detail)}`,
     });
   }
 }

@@ -13,7 +13,7 @@ const BOOKING_INCLUDE = {
 
 async function createBooking(req, res) {
   try {
-    const { providerId, serviceId, scheduledDate, scheduledTime, address, lat, lng, notes } = req.body;
+    const { providerId, serviceId, scheduledDate, scheduledTime, address, lat, lng, notes, dealId } = req.body;
 
     if (!providerId || !scheduledDate || !scheduledTime || !address) {
       return res.status(400).json({
@@ -50,6 +50,18 @@ async function createBooking(req, res) {
       if (service && service.priceType === 'FIXED') totalAmount = service.price;
     }
 
+    // If a deal is applied, compute deal price server-side
+    if (dealId) {
+      const deal = await prisma.promotion.findUnique({ where: { id: dealId } });
+      if (deal && deal.isActive && new Date(deal.endDate) > new Date() && deal.originalPrice) {
+        if (deal.discountType === 'PERCENTAGE') {
+          totalAmount = Math.round(deal.originalPrice * (1 - deal.discountValue / 100));
+        } else {
+          totalAmount = deal.originalPrice - deal.discountValue;
+        }
+      }
+    }
+
     const isFundi = provider.category === 'FUNDI';
 
     const booking = await prisma.$transaction(async (tx) => {
@@ -65,6 +77,7 @@ async function createBooking(req, res) {
           lng: lng ? parseFloat(lng) : null,
           totalAmount,
           notes,
+          dealId: dealId || null,
           status: 'PENDING',
         },
         include: BOOKING_INCLUDE,
@@ -72,6 +85,14 @@ async function createBooking(req, res) {
     });
 
     console.log(`📋 New booking created: ${booking.id} — ${req.user.name} → ${provider.businessName} [PENDING — awaiting provider]`);
+
+    // Increment deal booking count
+    if (dealId) {
+      prisma.promotion.update({
+        where: { id: dealId },
+        data: { bookingCount: { increment: 1 } },
+      }).catch(console.error);
+    }
 
     if (isFundi) {
       notificationSvc.notifyNewBooking({

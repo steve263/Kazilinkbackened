@@ -75,4 +75,18 @@ async function markAllRead(req, res) {
   }
 }
 
-module.exports = { getNotifications, getUnreadCount, markRead, markAllRead };
+async function deleteNotification(req, res) {
+  try {
+    const notification = await prisma.notification.findUnique({ where: { id: req.params.id } });
+    if (!notification) return res.status(404).json({ success: false, message: 'Notification not found' });
+    if (notification.userId !== req.user.id) {
+      return res.status(403).json({ success: false, message: 'Not authorized' });
+    }
+    await prisma.notification.delete({ where: { id: req.params.id } });
+    res.json({ success: true, data: { deleted: true } });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+module.exports = { getNotifications, getUnreadCount, markRead, markAllRead, deleteNotification };

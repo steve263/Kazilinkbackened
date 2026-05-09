@@ -1,22 +1,40 @@
--- CreateEnum
-CREATE TYPE IF NOT EXISTS "TrustLevel" AS ENUM ('NEW', 'BASIC', 'TRUSTED', 'VERIFIED', 'ELITE', 'SUSPENDED');
+-- CreateEnum TrustLevel (safe for any PG version)
+DO $$ BEGIN
+    CREATE TYPE "TrustLevel" AS ENUM ('NEW', 'BASIC', 'TRUSTED', 'VERIFIED', 'ELITE', 'SUSPENDED');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
--- CreateEnum
-CREATE TYPE IF NOT EXISTS "ReportType" AS ENUM ('FAKE_PROVIDER', 'NO_SHOW', 'POOR_QUALITY', 'OVERCHARGING', 'HARASSMENT', 'FAKE_REVIEWS', 'PAYMENT_FRAUD', 'IMPERSONATION', 'SCAM', 'OTHER');
+-- CreateEnum ReportType
+DO $$ BEGIN
+    CREATE TYPE "ReportType" AS ENUM ('FAKE_PROVIDER', 'NO_SHOW', 'POOR_QUALITY', 'OVERCHARGING', 'HARASSMENT', 'FAKE_REVIEWS', 'PAYMENT_FRAUD', 'IMPERSONATION', 'SCAM', 'OTHER');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
--- CreateEnum
-CREATE TYPE IF NOT EXISTS "ReportStatus" AS ENUM ('PENDING', 'INVESTIGATING', 'RESOLVED', 'DISMISSED');
+-- CreateEnum ReportStatus
+DO $$ BEGIN
+    CREATE TYPE "ReportStatus" AS ENUM ('PENDING', 'INVESTIGATING', 'RESOLVED', 'DISMISSED');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
--- CreateEnum
-CREATE TYPE IF NOT EXISTS "FraudType" AS ENUM ('MULTIPLE_ACCOUNTS', 'FAKE_REVIEWS', 'PAYMENT_MANIPULATION', 'SUSPICIOUS_BOOKINGS', 'REPEATED_CANCELLATIONS', 'IDENTITY_MISMATCH', 'UNUSUAL_ACTIVITY');
+-- CreateEnum FraudType
+DO $$ BEGIN
+    CREATE TYPE "FraudType" AS ENUM ('MULTIPLE_ACCOUNTS', 'FAKE_REVIEWS', 'PAYMENT_MANIPULATION', 'SUSPICIOUS_BOOKINGS', 'REPEATED_CANCELLATIONS', 'IDENTITY_MISMATCH', 'UNUSUAL_ACTIVITY');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
--- CreateEnum
-CREATE TYPE IF NOT EXISTS "FraudSeverity" AS ENUM ('LOW', 'MEDIUM', 'HIGH', 'CRITICAL');
+-- CreateEnum FraudSeverity
+DO $$ BEGIN
+    CREATE TYPE "FraudSeverity" AS ENUM ('LOW', 'MEDIUM', 'HIGH', 'CRITICAL');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
--- CreateEnum
-CREATE TYPE IF NOT EXISTS "VerificationType" AS ENUM ('PHONE', 'NATIONAL_ID', 'FACE', 'BUSINESS', 'ADDRESS');
+-- CreateEnum VerificationType
+DO $$ BEGIN
+    CREATE TYPE "VerificationType" AS ENUM ('PHONE', 'NATIONAL_ID', 'FACE', 'BUSINESS', 'ADDRESS');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
--- AlterTable: add isSuspended to User (safe, additive only)
+-- AlterTable: add isSuspended (IF NOT EXISTS is fine for ALTER TABLE in PG 9.6+)
 ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "isSuspended" BOOLEAN NOT NULL DEFAULT false;
 
 -- CreateTable TrustScore
@@ -83,33 +101,33 @@ CREATE TABLE IF NOT EXISTS "VerificationRequest" (
 -- CreateIndex
 CREATE UNIQUE INDEX IF NOT EXISTS "TrustScore_userId_key" ON "TrustScore"("userId");
 
--- AddForeignKey (safe with IF NOT EXISTS pattern via DO block)
+-- AddForeignKeys (idempotent via DO blocks)
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'TrustScore_userId_fkey') THEN
-    ALTER TABLE "TrustScore" ADD CONSTRAINT "TrustScore_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-  END IF;
+    ALTER TABLE "TrustScore" ADD CONSTRAINT "TrustScore_userId_fkey"
+        FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'Report_reporterId_fkey') THEN
-    ALTER TABLE "Report" ADD CONSTRAINT "Report_reporterId_fkey" FOREIGN KEY ("reporterId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-  END IF;
+    ALTER TABLE "Report" ADD CONSTRAINT "Report_reporterId_fkey"
+        FOREIGN KEY ("reporterId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'Report_reportedId_fkey') THEN
-    ALTER TABLE "Report" ADD CONSTRAINT "Report_reportedId_fkey" FOREIGN KEY ("reportedId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-  END IF;
+    ALTER TABLE "Report" ADD CONSTRAINT "Report_reportedId_fkey"
+        FOREIGN KEY ("reportedId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'FraudAlert_userId_fkey') THEN
-    ALTER TABLE "FraudAlert" ADD CONSTRAINT "FraudAlert_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-  END IF;
+    ALTER TABLE "FraudAlert" ADD CONSTRAINT "FraudAlert_userId_fkey"
+        FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'VerificationRequest_userId_fkey') THEN
-    ALTER TABLE "VerificationRequest" ADD CONSTRAINT "VerificationRequest_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-  END IF;
+    ALTER TABLE "VerificationRequest" ADD CONSTRAINT "VerificationRequest_userId_fkey"
+        FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;

@@ -29,7 +29,7 @@ async function aiChat(req, res) {
       return res.status(400).json({ success: false, message: 'messages array is required' });
     }
 
-    const apiKey = process.env.ANTHROPIC_API_KEY;
+    const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
       return res.status(503).json({
         success: false,
@@ -44,25 +44,26 @@ async function aiChat(req, res) {
     }));
 
     const response = await axios.post(
-      'https://api.anthropic.com/v1/messages',
+      'https://api.openai.com/v1/chat/completions',
       {
-        model: 'claude-sonnet-4-20250514',
+        model: 'gpt-4o-mini',
         max_tokens: 512,
-        system: SYSTEM_PROMPT,
-        messages: recent,
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPT },
+          ...recent,
+        ],
       },
       {
         headers: {
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01',
-          'content-type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
         },
         timeout: 30000,
       }
     );
 
     const reply =
-      response.data?.content?.[0]?.text ||
+      response.data?.choices?.[0]?.message?.content ||
       'I apologize, I could not generate a response. Please contact us on WhatsApp: +254795542312';
 
     res.json({ success: true, data: { reply } });

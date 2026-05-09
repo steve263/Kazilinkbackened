@@ -1,6 +1,7 @@
 const prisma = require('../config/db');
 const notificationSvc = require('../services/notification.service');
 const smsSvc = require('../services/sms.service');
+const trustSvc = require('../services/trust.service');
 
 async function getProfile(req, res) {
   try {
@@ -129,6 +130,12 @@ async function createReview(req, res) {
         providerPhone,
         `KaziShow: New review from ${customerName} — ${rating} stars. Check your profile on the app.`
       ).catch(console.error);
+    }
+
+    // Update provider trust score based on rating
+    if (providerUserId) {
+      const action = parseInt(rating) >= 4 ? 'positiveReview' : parseInt(rating) <= 2 ? 'negativeReview' : null;
+      if (action) trustSvc.updateTrustScore(providerUserId, action).catch(console.error);
     }
 
     console.log(`⭐ Review created for booking ${bookingId} — ${rating} stars by ${customerName}`);

@@ -16,6 +16,14 @@ async function auth(req, res, next) {
       return res.status(401).json({ success: false, message: 'User no longer exists' });
     }
 
+    if (user.isSuspended) {
+      return res.status(403).json({
+        success: false,
+        code: 'ACCOUNT_SUSPENDED',
+        message: 'Your account has been suspended. Contact support@kazishow.co.ke to appeal.',
+      });
+    }
+
     req.user = user;
     next();
   } catch (err) {

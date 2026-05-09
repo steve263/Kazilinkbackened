@@ -1,5 +1,6 @@
 const prisma = require('../config/db');
 const notificationSvc = require('../services/notification.service');
+const trustSvc = require('../services/trust.service');
 
 const BOOKING_INCLUDE = {
   customer: { select: { id: true, name: true, phone: true, location: true } },
@@ -309,7 +310,7 @@ async function updateStatus(req, res) {
       }).catch(console.error);
     }
 
-    // ── On COMPLETED: free provider + notify waitlist + referral check ────────
+    // ── On COMPLETED: free provider + notify waitlist + referral check + trust ─
     if (status.toUpperCase() === 'COMPLETED') {
       await prisma.provider.update({
         where: { id: booking.providerId },
@@ -318,6 +319,9 @@ async function updateStatus(req, res) {
       console.log(`🟢 Provider ${booking.provider.businessName} is now FREE`);
       notifyWaitlist(booking.providerId, booking.provider.businessName).catch(console.error);
       completeReferralIfFirst(booking.customerId, booking.customer).catch(console.error);
+      trustSvc.updateTrustScore(booking.customerId, 'completedJob').catch(console.error);
+      trustSvc.updateTrustScore(booking.provider.user.id, 'completedJob').catch(console.error);
+      trustSvc.detectFraud(booking.customerId).catch(console.error);
     }
 
     res.json({ success: true, data: updated });
@@ -349,6 +353,8 @@ async function cancelBooking(req, res) {
     });
 
     console.log(`🚫 Booking cancelled: ${booking.id}`);
+    trustSvc.updateTrustScore(req.user.id, 'cancelledJob').catch(console.error);
+    trustSvc.detectFraud(req.user.id).catch(console.error);
 
     // If booking was active, free the provider
     if (['ACCEPTED', 'EN_ROUTE', 'ARRIVED', 'IN_PROGRESS', 'PREPARING', 'READY'].includes(booking.status)) {

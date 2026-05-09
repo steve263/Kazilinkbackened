@@ -67,6 +67,7 @@ app.use('/api/stats',         require('./routes/stats.routes'));
 app.use('/api/videos',        require('./routes/video.routes'));
 app.use('/api/referrals',     require('./routes/referral.routes'));
 app.use('/api/promotions',    require('./routes/promotion.routes'));
+app.use('/api/trust',         require('./routes/trust.routes'));
 
 // Review routes (convenience aliases at /api/reviews)
 const { auth: _auth, requireRole: _role } = require('./middleware/auth');

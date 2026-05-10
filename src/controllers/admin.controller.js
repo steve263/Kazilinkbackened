@@ -221,22 +221,74 @@ async function suspendUser(req, res) {
 
 async function deleteUser(req, res) {
   try {
-    const user = await prisma.user.findUnique({ where: { id: req.params.id } });
+    const userId = req.params.id;
+
+    const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
     if (user.role === 'ADMIN') return res.status(403).json({ success: false, message: 'Cannot delete an admin' });
 
-    const id = req.params.id;
+    console.log(`🗑️ Deleting user: ${userId} (${user.name})`);
 
-    // Delete trust-related records first (migration adds CASCADE but this is a safety net)
-    await prisma.trustScore.deleteMany({ where: { userId: id } });
-    await prisma.suspensionAppeal.deleteMany({ where: { userId: id } });
-    await prisma.fraudAlert.deleteMany({ where: { userId: id } });
-    await prisma.report.deleteMany({ where: { OR: [{ reporterId: id }, { reportedId: id }] } });
-    await prisma.verificationRequest.deleteMany({ where: { userId: id } });
+    // 1. Messages
+    await prisma.message.deleteMany({ where: { OR: [{ senderId: userId }, { receiverId: userId }] } });
 
-    await prisma.user.delete({ where: { id } });
-    console.log(`🗑️ Admin deleted user: ${user.name} (${user.phone})`);
-    res.json({ success: true, data: { message: 'User deleted' } });
+    // 2. Notifications
+    await prisma.notification.deleteMany({ where: { userId } });
+
+    // 3. Ticket messages → support tickets
+    await prisma.ticketMessage.deleteMany({ where: { senderId: userId } });
+    await prisma.supportTicket.deleteMany({ where: { userId } });
+
+    // 4. Reviews
+    await prisma.review.deleteMany({ where: { customerId: userId } });
+
+    // 5. Trust records
+    await prisma.report.deleteMany({ where: { OR: [{ reporterId: userId }, { reportedId: userId }] } });
+    await prisma.fraudAlert.deleteMany({ where: { userId } });
+    await prisma.trustScore.deleteMany({ where: { userId } });
+    await prisma.suspensionAppeal.deleteMany({ where: { userId } });
+    await prisma.verificationRequest.deleteMany({ where: { userId } });
+
+    // 6. Payments / disputes / refunds
+    await prisma.refundRequest.deleteMany({ where: { userId } });
+    await prisma.dispute.deleteMany({ where: { raisedBy: userId } });
+
+    // 7. Community content
+    await prisma.tipComment.deleteMany({ where: { userId } });
+    await prisma.tip.deleteMany({ where: { authorId: userId } });
+    await prisma.videoComment.deleteMany({ where: { userId } });
+    await prisma.video.deleteMany({ where: { userId } });
+    await prisma.testimonial.deleteMany({ where: { customerId: userId } });
+    await prisma.postComment.deleteMany({ where: { userId } });
+
+    // 8. Social
+    await prisma.follow.deleteMany({ where: { OR: [{ followerId: userId }, { providerId: userId }] } });
+
+    // 9. Referrals / rewards
+    await prisma.reward.deleteMany({ where: { userId } });
+    await prisma.referral.deleteMany({ where: { OR: [{ referrerId: userId }, { referredId: userId }] } });
+
+    // 10. Provider-specific records (if user is a provider)
+    const provider = await prisma.provider.findUnique({ where: { userId } });
+    if (provider) {
+      await prisma.providerWaitlist.deleteMany({
+        where: { OR: [{ providerId: provider.id }, { customerId: userId }] },
+      });
+      await prisma.outstandingCommission.deleteMany({ where: { providerId: provider.id } });
+      await prisma.service.deleteMany({ where: { providerId: provider.id } });
+      await prisma.booking.deleteMany({
+        where: { OR: [{ customerId: userId }, { providerId: provider.id }] },
+      });
+      await prisma.provider.delete({ where: { userId } });
+    } else {
+      await prisma.booking.deleteMany({ where: { customerId: userId } });
+    }
+
+    // 11. Finally delete the user
+    await prisma.user.delete({ where: { id: userId } });
+
+    console.log(`✅ User ${userId} (${user.name}) deleted successfully`);
+    res.json({ success: true, data: { message: 'User deleted successfully' } });
   } catch (err) {
     console.error('❌ deleteUser error:', err.message);
     res.status(500).json({ success: false, message: err.message });

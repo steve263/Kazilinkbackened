@@ -222,73 +222,80 @@ async function suspendUser(req, res) {
 async function deleteUser(req, res) {
   try {
     const userId = req.params.id;
+    console.log(`🗑️ Starting delete for user: ${userId}`);
 
-    const user = await prisma.user.findUnique({ where: { id: userId } });
-    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
-    if (user.role === 'ADMIN') return res.status(403).json({ success: false, message: 'Cannot delete an admin' });
+    await prisma.$transaction(async (tx) => {
+      const provider = await tx.provider.findUnique({ where: { userId } }).catch(() => null);
 
-    console.log(`🗑️ Deleting user: ${userId} (${user.name})`);
+      // Step 1: Delete booking-related records first (payments, reviews, notifications)
+      if (provider) {
+        const providerBookings = await tx.booking.findMany({
+          where: { providerId: provider.id },
+          select: { id: true },
+        });
+        const providerBookingIds = providerBookings.map((b) => b.id);
 
-    const safeDeleteMany = async (model, where) => {
-      try {
-        if (prisma[model]) {
-          await prisma[model].deleteMany({ where });
-          console.log(`✅ Deleted ${model} records`);
+        if (providerBookingIds.length > 0) {
+          await tx.payment.deleteMany({ where: { bookingId: { in: providerBookingIds } } }).catch(() => {});
+          await tx.review.deleteMany({ where: { bookingId: { in: providerBookingIds } } }).catch(() => {});
+          await tx.notification.deleteMany({ where: { bookingId: { in: providerBookingIds } } }).catch(() => {});
         }
-      } catch (err) {
-        console.log(`⚠️ Skipped ${model}: ${err.message}`);
+
+        await tx.booking.deleteMany({ where: { providerId: provider.id } }).catch(() => {});
       }
-    };
 
-    const safeDelete = async (model, where) => {
-      try {
-        if (prisma[model]) {
-          await prisma[model].delete({ where });
-          console.log(`✅ Deleted ${model}`);
-        }
-      } catch (err) {
-        console.log(`⚠️ Skipped ${model}: ${err.message}`);
+      const customerBookings = await tx.booking.findMany({
+        where: { customerId: userId },
+        select: { id: true },
+      });
+      const customerBookingIds = customerBookings.map((b) => b.id);
+
+      if (customerBookingIds.length > 0) {
+        await tx.payment.deleteMany({ where: { bookingId: { in: customerBookingIds } } }).catch(() => {});
+        await tx.review.deleteMany({ where: { bookingId: { in: customerBookingIds } } }).catch(() => {});
+        await tx.notification.deleteMany({ where: { bookingId: { in: customerBookingIds } } }).catch(() => {});
       }
-    };
 
-    await safeDeleteMany('message', { OR: [{ senderId: userId }, { receiverId: userId }] });
-    await safeDeleteMany('notification', { userId });
-    await safeDeleteMany('ticketMessage', { senderId: userId });
-    await safeDeleteMany('supportTicket', { userId });
-    await safeDeleteMany('review', { customerId: userId });
-    await safeDeleteMany('report', { OR: [{ reporterId: userId }, { reportedId: userId }] });
-    await safeDeleteMany('fraudAlert', { userId });
-    await safeDeleteMany('trustScore', { userId });
-    await safeDeleteMany('suspensionAppeal', { userId });
-    await safeDeleteMany('verificationRequest', { userId });
-    await safeDeleteMany('refundRequest', { userId });
-    await safeDeleteMany('dispute', { raisedBy: userId });
-    await safeDeleteMany('tipComment', { userId });
-    await safeDeleteMany('tip', { authorId: userId });
-    await safeDeleteMany('videoComment', { userId });
-    await safeDeleteMany('videoReport', { userId });
-    await safeDeleteMany('video', { userId });
-    await safeDeleteMany('testimonial', { customerId: userId });
-    await safeDeleteMany('postComment', { userId });
-    await safeDeleteMany('follow', { OR: [{ followerId: userId }, { providerId: userId }] });
-    await safeDeleteMany('reward', { userId });
-    await safeDeleteMany('referral', { OR: [{ referrerId: userId }, { referredId: userId }] });
-    await safeDeleteMany('providerWaitlist', { customerId: userId });
+      await tx.booking.deleteMany({ where: { customerId: userId } }).catch(() => {});
 
-    const provider = await prisma.provider.findUnique({ where: { userId } }).catch(() => null);
-    if (provider) {
-      await safeDeleteMany('providerWaitlist', { providerId: provider.id });
-      await safeDeleteMany('outstandingCommission', { providerId: provider.id });
-      await safeDeleteMany('service', { providerId: provider.id });
-      await safeDeleteMany('booking', { OR: [{ customerId: userId }, { providerId: provider.id }] });
-      await safeDelete('provider', { userId });
-    } else {
-      await safeDeleteMany('booking', { customerId: userId });
-    }
+      // Step 2: Delete provider-specific records then the provider row
+      if (provider) {
+        await tx.service.deleteMany({ where: { providerId: provider.id } }).catch(() => {});
+        await tx.review.deleteMany({ where: { providerId: provider.id } }).catch(() => {});
+        await tx.providerWaitlist.deleteMany({ where: { providerId: provider.id } }).catch(() => {});
+        await tx.outstandingCommission.deleteMany({ where: { providerId: provider.id } }).catch(() => {});
+        await tx.provider.delete({ where: { userId } }).catch(() => {});
+      }
 
-    await prisma.user.delete({ where: { id: userId } });
+      // Step 3: Delete all other user-linked records
+      await tx.message.deleteMany({ where: { OR: [{ senderId: userId }, { receiverId: userId }] } }).catch(() => {});
+      await tx.notification.deleteMany({ where: { userId } }).catch(() => {});
+      await tx.review.deleteMany({ where: { customerId: userId } }).catch(() => {});
+      await tx.report.deleteMany({ where: { OR: [{ reporterId: userId }, { reportedId: userId }] } }).catch(() => {});
+      await tx.fraudAlert.deleteMany({ where: { userId } }).catch(() => {});
+      await tx.trustScore.deleteMany({ where: { userId } }).catch(() => {});
+      await tx.suspensionAppeal.deleteMany({ where: { userId } }).catch(() => {});
+      await tx.refundRequest.deleteMany({ where: { userId } }).catch(() => {});
+      await tx.dispute.deleteMany({ where: { raisedBy: userId } }).catch(() => {});
+      await tx.tipComment.deleteMany({ where: { userId } }).catch(() => {});
+      await tx.tip.deleteMany({ where: { authorId: userId } }).catch(() => {});
+      await tx.videoComment.deleteMany({ where: { userId } }).catch(() => {});
+      await tx.video.deleteMany({ where: { userId } }).catch(() => {});
+      await tx.testimonial.deleteMany({ where: { customerId: userId } }).catch(() => {});
+      await tx.follow.deleteMany({ where: { OR: [{ followerId: userId }, { providerId: userId }] } }).catch(() => {});
+      await tx.reward.deleteMany({ where: { userId } }).catch(() => {});
+      await tx.referral.deleteMany({ where: { OR: [{ referrerId: userId }, { referredId: userId }] } }).catch(() => {});
+      await tx.postComment.deleteMany({ where: { userId } }).catch(() => {});
+      await tx.providerWaitlist.deleteMany({ where: { customerId: userId } }).catch(() => {});
+      await tx.ticketMessage.deleteMany({ where: { senderId: userId } }).catch(() => {});
+      await tx.supportTicket.deleteMany({ where: { userId } }).catch(() => {});
 
-    console.log(`✅ User ${userId} (${user.name}) deleted successfully`);
+      // Step 4: Delete the user
+      await tx.user.delete({ where: { id: userId } });
+
+      console.log(`✅ User ${userId} deleted successfully`);
+    });
+
     res.json({ success: true, data: { message: 'User deleted successfully' } });
   } catch (err) {
     console.error('❌ deleteUser error:', err.message);

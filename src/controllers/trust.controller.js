@@ -217,9 +217,65 @@ async function resolveFraudAlert(req, res) {
 async function suspendUser(req, res) {
   try {
     const { reason } = req.body;
-    await trustSvc.suspendAccount(req.params.id, reason || 'Admin action');
-    res.json({ success: true, data: { message: 'User suspended successfully' } });
+
+    if (!reason) {
+      return res.status(400).json({ success: false, message: 'Suspension reason is required' });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, name: true, phone: true, deviceToken: true, role: true },
+    });
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    await prisma.user.update({
+      where: { id: req.params.id },
+      data: { isSuspended: true },
+    });
+
+    await prisma.trustScore.upsert({
+      where: { userId: req.params.id },
+      create: { userId: req.params.id, score: 0, level: 'SUSPENDED' },
+      update: { score: 0, level: 'SUSPENDED' },
+    });
+
+    console.log(`🚫 Account suspended: ${user.name} — Reason: ${reason}`);
+
+    // Push notification (reaches user even when app is closed)
+    firebaseSvc.sendPushNotification({
+      deviceToken: user.deviceToken,
+      title: '🚫 Account Suspended',
+      body: `Your KaziShow account has been suspended. Reason: ${reason}. Tap to appeal.`,
+      data: { url: '/appeal', type: 'ACCOUNT_SUSPENDED' },
+    }).catch(console.error);
+
+    // In-app notification
+    notificationSvc.createNotification({
+      userId: req.params.id,
+      type: 'SYSTEM',
+      title: '🚫 Account Suspended',
+      body: `Your account has been suspended. Reason: ${reason}. You can appeal this decision by tapping "Appeal Suspension".`,
+    }).catch(console.error);
+
+    // SMS (most reliable — always reaches them)
+    smsSvc.sendSMS(
+      user.phone,
+      `KaziShow: Your account has been suspended. Reason: ${reason}. To appeal, open the KaziShow app and tap "Appeal Suspension". For help contact: 0795542312 or 0731421635.`
+    ).catch(console.error);
+
+    console.log(`✅ Suspension notifications sent to ${user.name}`);
+
+    res.json({
+      success: true,
+      data: {
+        message: `Account suspended. ${user.name} has been notified via SMS and push notification.`,
+      },
+    });
   } catch (err) {
+    console.error('❌ suspendUser error:', err.message);
     res.status(500).json({ success: false, message: err.message });
   }
 }

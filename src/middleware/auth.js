@@ -84,4 +84,24 @@ async function admin(req, res, next) {
   }
 }
 
-module.exports = { auth, optionalAuth, requireRole, admin };
+// Like auth but allows suspended users through (needed for appeal routes)
+async function authSuspended(req, res, next) {
+  try {
+    const header = req.headers.authorization;
+    if (!header || !header.startsWith('Bearer ')) {
+      return res.status(401).json({ success: false, message: 'No token provided' });
+    }
+    const token = header.split(' ')[1];
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const user = await prisma.user.findUnique({ where: { id: decoded.id } });
+    if (!user) {
+      return res.status(401).json({ success: false, message: 'User no longer exists' });
+    }
+    req.user = user;
+    next();
+  } catch (err) {
+    return res.status(401).json({ success: false, message: 'Invalid or expired token' });
+  }
+}
+
+module.exports = { auth, authSuspended, optionalAuth, requireRole, admin };

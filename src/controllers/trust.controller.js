@@ -2,6 +2,7 @@ const prisma = require('../config/db');
 const trustSvc = require('../services/trust.service');
 const notificationSvc = require('../services/notification.service');
 const smsSvc = require('../services/sms.service');
+const firebaseSvc = require('../services/firebase.service');
 
 async function submitReport(req, res) {
   try {
@@ -251,6 +252,290 @@ async function getTrustStats(req, res) {
   }
 }
 
+// ─── Suspension Appeal ────────────────────────────────────────────────────────
+
+async function submitAppeal(req, res) {
+  try {
+    const { appealReason, explanation, evidence, contactPhone, contactEmail } = req.body;
+
+    if (!appealReason || !explanation || !contactPhone) {
+      return res.status(400).json({ success: false, message: 'appealReason, explanation and contactPhone are required' });
+    }
+    if (explanation.length < 50) {
+      return res.status(400).json({ success: false, message: 'Explanation must be at least 50 characters' });
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: req.user.id } });
+    if (!user.isSuspended) {
+      return res.status(400).json({ success: false, message: 'Your account is not suspended' });
+    }
+
+    // Check for existing active appeal
+    const existing = await prisma.suspensionAppeal.findFirst({
+      where: { userId: req.user.id, status: { in: ['PENDING', 'UNDER_REVIEW', 'MORE_INFO_NEEDED'] } },
+    });
+    if (existing) {
+      return res.status(400).json({
+        success: false,
+        message: 'You already have a pending appeal. Please wait for our response.',
+        data: { appealId: existing.id, status: existing.status },
+      });
+    }
+
+    // Check 30-day wait after rejection
+    const recentRejection = await prisma.suspensionAppeal.findFirst({
+      where: { userId: req.user.id, status: 'REJECTED', resolvedAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } },
+      orderBy: { resolvedAt: 'desc' },
+    });
+    if (recentRejection) {
+      const daysLeft = Math.ceil(
+        (new Date(recentRejection.resolvedAt).getTime() + 30 * 24 * 60 * 60 * 1000 - Date.now()) / (24 * 60 * 60 * 1000)
+      );
+      return res.status(400).json({
+        success: false,
+        message: `Your previous appeal was rejected. You can submit a new appeal in ${daysLeft} day(s).`,
+      });
+    }
+
+    const trustScore = await prisma.trustScore.findUnique({ where: { userId: req.user.id } });
+
+    const appeal = await prisma.suspensionAppeal.create({
+      data: {
+        userId: req.user.id,
+        suspensionReason: trustScore?.level || 'Account suspended by admin',
+        appealReason,
+        explanation,
+        evidence: evidence || [],
+        contactPhone,
+        contactEmail: contactEmail || null,
+      },
+    });
+
+    // Notify all admins
+    const admins = await prisma.user.findMany({ where: { role: 'ADMIN' } });
+    for (const admin of admins) {
+      notificationSvc.createNotification({
+        userId: admin.id,
+        type: 'SYSTEM',
+        title: '⚖️ New Suspension Appeal',
+        body: `${user.name} has submitted a suspension appeal. Please review in the admin dashboard.`,
+      }).catch(console.error);
+    }
+
+    smsSvc.sendSMS(
+      user.phone,
+      `KaziShow: Your suspension appeal has been received. Our team will review within 48 hours. Appeal ID: ${appeal.id.slice(0, 8).toUpperCase()}`
+    ).catch(console.error);
+
+    console.log(`⚖️ Appeal submitted by ${user.name} — ${appealReason}`);
+    res.status(201).json({
+      success: true,
+      data: {
+        appeal,
+        message: 'Your appeal has been submitted. We will review it within 48 hours.',
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+async function getMyAppeal(req, res) {
+  try {
+    const appeal = await prisma.suspensionAppeal.findFirst({
+      where: { userId: req.user.id },
+      orderBy: { createdAt: 'desc' },
+    });
+    res.json({ success: true, data: appeal });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+async function getAllAppeals(req, res) {
+  try {
+    const { status } = req.query;
+    const where = status ? { status } : {};
+
+    const appeals = await prisma.suspensionAppeal.findMany({
+      where,
+      include: {
+        user: {
+          select: {
+            name: true, phone: true, role: true, createdAt: true, deviceToken: true,
+            provider: { select: { businessName: true, category: true, rating: true, totalReviews: true } },
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    res.json({ success: true, data: appeals });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+async function approveAppeal(req, res) {
+  try {
+    const { adminNote } = req.body;
+
+    const appeal = await prisma.suspensionAppeal.update({
+      where: { id: req.params.id },
+      data: { status: 'APPROVED', adminNote: adminNote || null, reviewedBy: req.user.id, resolvedAt: new Date() },
+      include: { user: true },
+    });
+
+    await prisma.user.update({ where: { id: appeal.userId }, data: { isSuspended: false } });
+    await prisma.trustScore.upsert({
+      where: { userId: appeal.userId },
+      create: { userId: appeal.userId, score: 40, level: 'BASIC' },
+      update: { score: 40, level: 'BASIC' },
+    });
+
+    firebaseSvc.sendPushNotification({
+      deviceToken: appeal.user.deviceToken,
+      title: '✅ Appeal Approved!',
+      body: 'Your account has been reinstated. Welcome back to KaziShow!',
+      data: { url: '/' },
+    }).catch(console.error);
+
+    notificationSvc.createNotification({
+      userId: appeal.userId,
+      type: 'SYSTEM',
+      title: '✅ Appeal Approved!',
+      body: `Your suspension appeal has been approved. ${adminNote ? 'Note: ' + adminNote + '. ' : ''}Welcome back to KaziShow!`,
+    }).catch(console.error);
+
+    smsSvc.sendSMS(
+      appeal.user.phone,
+      `KaziShow: Great news! Your suspension appeal has been APPROVED. Your account is reinstated. Welcome back!`
+    ).catch(console.error);
+
+    console.log(`✅ Appeal approved for ${appeal.user.name}`);
+    res.json({ success: true, data: appeal });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+async function rejectAppeal(req, res) {
+  try {
+    const { reason } = req.body;
+    if (!reason) {
+      return res.status(400).json({ success: false, message: 'Rejection reason is required' });
+    }
+
+    const appeal = await prisma.suspensionAppeal.update({
+      where: { id: req.params.id },
+      data: { status: 'REJECTED', adminNote: reason, reviewedBy: req.user.id, resolvedAt: new Date() },
+      include: { user: true },
+    });
+
+    firebaseSvc.sendPushNotification({
+      deviceToken: appeal.user.deviceToken,
+      title: '❌ Appeal Decision',
+      body: `Your suspension appeal was not approved. Reason: ${reason}`,
+      data: { url: '/' },
+    }).catch(console.error);
+
+    notificationSvc.createNotification({
+      userId: appeal.userId,
+      type: 'SYSTEM',
+      title: '❌ Appeal Not Approved',
+      body: `Your appeal was reviewed but not approved. Reason: ${reason}. Contact support for further assistance.`,
+    }).catch(console.error);
+
+    smsSvc.sendSMS(
+      appeal.user.phone,
+      `KaziShow: Your suspension appeal was not approved. Reason: ${reason}. Contact support: 0795542312 or support@kazishow.co.ke`
+    ).catch(console.error);
+
+    console.log(`❌ Appeal rejected for ${appeal.user.name} — ${reason}`);
+    res.json({ success: true, data: appeal });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+async function requestMoreInfo(req, res) {
+  try {
+    const { questions } = req.body;
+    if (!questions) {
+      return res.status(400).json({ success: false, message: 'questions field is required' });
+    }
+
+    const appeal = await prisma.suspensionAppeal.update({
+      where: { id: req.params.id },
+      data: { status: 'MORE_INFO_NEEDED', adminNote: questions, reviewedBy: req.user.id },
+      include: { user: true },
+    });
+
+    firebaseSvc.sendPushNotification({
+      deviceToken: appeal.user.deviceToken,
+      title: '📋 More Information Needed',
+      body: 'Admin needs more information about your appeal. Please open the app.',
+      data: { url: '/appeal/provide-info' },
+    }).catch(console.error);
+
+    notificationSvc.createNotification({
+      userId: appeal.userId,
+      type: 'SYSTEM',
+      title: '📋 More Information Needed',
+      body: `Admin has questions about your appeal: ${questions}. Please provide more details in the app.`,
+    }).catch(console.error);
+
+    smsSvc.sendSMS(
+      appeal.user.phone,
+      `KaziShow: Your suspension appeal needs more information. Please open the KaziShow app to provide details.`
+    ).catch(console.error);
+
+    res.json({ success: true, data: appeal });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+async function provideMoreInfo(req, res) {
+  try {
+    const { additionalInfo, newEvidence } = req.body;
+    if (!additionalInfo) {
+      return res.status(400).json({ success: false, message: 'additionalInfo is required' });
+    }
+
+    const appeal = await prisma.suspensionAppeal.findUnique({ where: { id: req.params.id } });
+    if (!appeal || appeal.userId !== req.user.id) {
+      return res.status(403).json({ success: false, message: 'Not authorized' });
+    }
+    if (appeal.status !== 'MORE_INFO_NEEDED') {
+      return res.status(400).json({ success: false, message: 'Appeal is not awaiting more information' });
+    }
+
+    const updated = await prisma.suspensionAppeal.update({
+      where: { id: req.params.id },
+      data: {
+        explanation: appeal.explanation + '\n\n--- Additional Information ---\n' + additionalInfo,
+        evidence: [...appeal.evidence, ...(newEvidence || [])],
+        status: 'UNDER_REVIEW',
+        updatedAt: new Date(),
+      },
+    });
+
+    const admins = await prisma.user.findMany({ where: { role: 'ADMIN' } });
+    for (const admin of admins) {
+      notificationSvc.createNotification({
+        userId: admin.id,
+        type: 'SYSTEM',
+        title: '📋 Appeal Updated',
+        body: `${req.user.name} provided additional information for their suspension appeal.`,
+      }).catch(console.error);
+    }
+
+    res.json({ success: true, data: updated });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
 module.exports = {
   submitReport,
   getMyTrustScore,
@@ -264,4 +549,11 @@ module.exports = {
   suspendUser,
   unsuspendUser,
   getTrustStats,
+  submitAppeal,
+  getMyAppeal,
+  getAllAppeals,
+  approveAppeal,
+  rejectAppeal,
+  requestMoreInfo,
+  provideMoreInfo,
 };

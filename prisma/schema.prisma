@@ -50,6 +50,7 @@ model User {
   reportsReceived      Report[]             @relation("ReportedReports")
   fraudAlerts          FraudAlert[]
   verificationRequests VerificationRequest[]
+  suspensionAppeals    SuspensionAppeal[]
 }
 
 model Provider {
@@ -676,4 +677,30 @@ enum VerificationType {
   FACE
   BUSINESS
   ADDRESS
+}
+
+model SuspensionAppeal {
+  id               String       @id @default(cuid())
+  userId           String
+  user             User         @relation(fields: [userId], references: [id])
+  suspensionReason String
+  appealReason     String
+  explanation      String
+  evidence         String[]
+  contactPhone     String
+  contactEmail     String?
+  status           AppealStatus @default(PENDING)
+  adminNote        String?
+  reviewedBy       String?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  resolvedAt       DateTime?
+}
+
+enum AppealStatus {
+  PENDING
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+  MORE_INFO_NEEDED
 }

@@ -229,62 +229,63 @@ async function deleteUser(req, res) {
 
     console.log(`🗑️ Deleting user: ${userId} (${user.name})`);
 
-    // 1. Messages
-    await prisma.message.deleteMany({ where: { OR: [{ senderId: userId }, { receiverId: userId }] } });
+    const safeDeleteMany = async (model, where) => {
+      try {
+        if (prisma[model]) {
+          await prisma[model].deleteMany({ where });
+          console.log(`✅ Deleted ${model} records`);
+        }
+      } catch (err) {
+        console.log(`⚠️ Skipped ${model}: ${err.message}`);
+      }
+    };
 
-    // 2. Notifications
-    await prisma.notification.deleteMany({ where: { userId } });
+    const safeDelete = async (model, where) => {
+      try {
+        if (prisma[model]) {
+          await prisma[model].delete({ where });
+          console.log(`✅ Deleted ${model}`);
+        }
+      } catch (err) {
+        console.log(`⚠️ Skipped ${model}: ${err.message}`);
+      }
+    };
 
-    // 3. Ticket messages → support tickets
-    await prisma.ticketMessage.deleteMany({ where: { senderId: userId } });
-    await prisma.supportTicket.deleteMany({ where: { userId } });
+    await safeDeleteMany('message', { OR: [{ senderId: userId }, { receiverId: userId }] });
+    await safeDeleteMany('notification', { userId });
+    await safeDeleteMany('ticketMessage', { senderId: userId });
+    await safeDeleteMany('supportTicket', { userId });
+    await safeDeleteMany('review', { customerId: userId });
+    await safeDeleteMany('report', { OR: [{ reporterId: userId }, { reportedId: userId }] });
+    await safeDeleteMany('fraudAlert', { userId });
+    await safeDeleteMany('trustScore', { userId });
+    await safeDeleteMany('suspensionAppeal', { userId });
+    await safeDeleteMany('verificationRequest', { userId });
+    await safeDeleteMany('refundRequest', { userId });
+    await safeDeleteMany('dispute', { raisedBy: userId });
+    await safeDeleteMany('tipComment', { userId });
+    await safeDeleteMany('tip', { authorId: userId });
+    await safeDeleteMany('videoComment', { userId });
+    await safeDeleteMany('videoReport', { userId });
+    await safeDeleteMany('video', { userId });
+    await safeDeleteMany('testimonial', { customerId: userId });
+    await safeDeleteMany('postComment', { userId });
+    await safeDeleteMany('follow', { OR: [{ followerId: userId }, { providerId: userId }] });
+    await safeDeleteMany('reward', { userId });
+    await safeDeleteMany('referral', { OR: [{ referrerId: userId }, { referredId: userId }] });
+    await safeDeleteMany('providerWaitlist', { customerId: userId });
 
-    // 4. Reviews
-    await prisma.review.deleteMany({ where: { customerId: userId } });
-
-    // 5. Trust records
-    await prisma.report.deleteMany({ where: { OR: [{ reporterId: userId }, { reportedId: userId }] } });
-    await prisma.fraudAlert.deleteMany({ where: { userId } });
-    await prisma.trustScore.deleteMany({ where: { userId } });
-    await prisma.suspensionAppeal.deleteMany({ where: { userId } });
-    await prisma.verificationRequest.deleteMany({ where: { userId } });
-
-    // 6. Payments / disputes / refunds
-    await prisma.refundRequest.deleteMany({ where: { userId } });
-    await prisma.dispute.deleteMany({ where: { raisedBy: userId } });
-
-    // 7. Community content
-    await prisma.tipComment.deleteMany({ where: { userId } });
-    await prisma.tip.deleteMany({ where: { authorId: userId } });
-    await prisma.videoComment.deleteMany({ where: { userId } });
-    await prisma.video.deleteMany({ where: { userId } });
-    await prisma.testimonial.deleteMany({ where: { customerId: userId } });
-    await prisma.postComment.deleteMany({ where: { userId } });
-
-    // 8. Social
-    await prisma.follow.deleteMany({ where: { OR: [{ followerId: userId }, { providerId: userId }] } });
-
-    // 9. Referrals / rewards
-    await prisma.reward.deleteMany({ where: { userId } });
-    await prisma.referral.deleteMany({ where: { OR: [{ referrerId: userId }, { referredId: userId }] } });
-
-    // 10. Provider-specific records (if user is a provider)
-    const provider = await prisma.provider.findUnique({ where: { userId } });
+    const provider = await prisma.provider.findUnique({ where: { userId } }).catch(() => null);
     if (provider) {
-      await prisma.providerWaitlist.deleteMany({
-        where: { OR: [{ providerId: provider.id }, { customerId: userId }] },
-      });
-      await prisma.outstandingCommission.deleteMany({ where: { providerId: provider.id } });
-      await prisma.service.deleteMany({ where: { providerId: provider.id } });
-      await prisma.booking.deleteMany({
-        where: { OR: [{ customerId: userId }, { providerId: provider.id }] },
-      });
-      await prisma.provider.delete({ where: { userId } });
+      await safeDeleteMany('providerWaitlist', { providerId: provider.id });
+      await safeDeleteMany('outstandingCommission', { providerId: provider.id });
+      await safeDeleteMany('service', { providerId: provider.id });
+      await safeDeleteMany('booking', { OR: [{ customerId: userId }, { providerId: provider.id }] });
+      await safeDelete('provider', { userId });
     } else {
-      await prisma.booking.deleteMany({ where: { customerId: userId } });
+      await safeDeleteMany('booking', { customerId: userId });
     }
 
-    // 11. Finally delete the user
     await prisma.user.delete({ where: { id: userId } });
 
     console.log(`✅ User ${userId} (${user.name}) deleted successfully`);

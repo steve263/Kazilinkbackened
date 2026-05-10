@@ -26,29 +26,32 @@ async function submitReport(req, res) {
       data: { reporterId: req.user.id, reportedId, type, description, evidence: evidence || null, bookingId: bookingId || null },
     });
 
-    await trustSvc.updateTrustScore(reportedId, 'reportReceived');
+    // Fire-and-forget — don't let these block or fail the response
+    trustSvc.updateTrustScore(reportedId, 'reportReceived').catch(console.error);
 
-    const admins = await prisma.user.findMany({ where: { role: 'ADMIN' } });
-    for (const admin of admins) {
-      notificationSvc.createNotification({
-        userId: admin.id,
-        type: 'SYSTEM',
-        title: '🚨 New Report Submitted',
-        body: `New ${type} report submitted. Please review in admin dashboard.`,
-      }).catch(console.error);
-    }
+    prisma.user.findMany({ where: { role: 'ADMIN' } }).then((admins) => {
+      for (const admin of admins) {
+        notificationSvc.createNotification({
+          userId: admin.id,
+          type: 'SYSTEM',
+          title: '🚨 New Report Submitted',
+          body: `New ${type} report against ${reportedId}. Please review in admin dashboard.`,
+        }).catch(console.error);
+      }
+    }).catch(console.error);
 
-    const totalPending = await prisma.report.count({ where: { reportedId, status: 'PENDING' } });
-    if (totalPending >= 5) {
-      prisma.fraudAlert.create({
-        data: {
-          userId: reportedId,
-          type: 'UNUSUAL_ACTIVITY',
-          description: `User has ${totalPending} pending reports`,
-          severity: 'HIGH',
-        },
-      }).catch(console.error);
-    }
+    prisma.report.count({ where: { reportedId, status: 'PENDING' } }).then((totalPending) => {
+      if (totalPending >= 5) {
+        prisma.fraudAlert.create({
+          data: {
+            userId: reportedId,
+            type: 'UNUSUAL_ACTIVITY',
+            description: `User has ${totalPending} pending reports`,
+            severity: 'HIGH',
+          },
+        }).catch(console.error);
+      }
+    }).catch(console.error);
 
     console.log(`🚨 Report: ${type} against ${reportedId} by ${req.user.id}`);
     res.json({

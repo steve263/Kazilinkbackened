@@ -3,18 +3,20 @@ const router = express.Router();
 const { auth, authSuspended, requireRole } = require('../middleware/auth');
 const ctrl = require('../controllers/trust.controller');
 
-// User-facing
-router.post('/report',             auth, ctrl.submitReport);
-router.get('/reports/my',          auth, ctrl.getMyReports);
-router.get('/trust-score',         auth, ctrl.getMyTrustScore);
-router.get('/trust-score/:userId',      ctrl.getUserTrustScore);
+// Public trust score
+router.get('/trust-score/:userId', ctrl.getUserTrustScore);
 
-// Appeal routes (authSuspended so suspended users can access)
-router.post('/appeal',                    authSuspended, ctrl.submitAppeal);
-router.get('/appeal/my',                  authSuspended, ctrl.getMyAppeal);
-router.post('/appeal/:id/provide-info',   authSuspended, ctrl.provideMoreInfo);
+// Authenticated user routes
+router.get('/trust-score',   auth, ctrl.getMyTrustScore);
+router.post('/report',       auth, ctrl.submitReport);
+router.get('/reports/my',    auth, ctrl.getMyReports);
 
-// Admin
+// Appeal routes — authSuspended so suspended users can submit/view their appeal
+router.post('/appeal',                   authSuspended, ctrl.submitAppeal);
+router.get('/appeal/my',                 authSuspended, ctrl.getMyAppeal);
+router.post('/appeal/:id/provide-info',  authSuspended, ctrl.provideMoreInfo);
+
+// Admin routes — ALL require ADMIN role
 router.get('/admin/stats',                    auth, requireRole('ADMIN'), ctrl.getTrustStats);
 router.get('/admin/reports',                  auth, requireRole('ADMIN'), ctrl.getAllReports);
 router.put('/admin/reports/:id/resolve',      auth, requireRole('ADMIN'), ctrl.resolveReport);

@@ -6,9 +6,14 @@ const firebaseSvc = require('../services/firebase.service');
 
 async function submitReport(req, res) {
   try {
+    console.log('📋 Report submission received:', req.body);
+    console.log('📋 Reporter:', req.user.id, req.user.name);
+
     const { reportedId, type, description, evidence, bookingId } = req.body;
+    console.log('📋 Report data:', { reportedId, type, description });
 
     if (!reportedId || !type || !description) {
+      console.log('❌ Missing required fields');
       return res.status(400).json({ success: false, message: 'reportedId, type and description are required' });
     }
     if (reportedId === req.user.id) {
@@ -25,6 +30,8 @@ async function submitReport(req, res) {
     const report = await prisma.report.create({
       data: { reporterId: req.user.id, reportedId, type, description, evidence: evidence || null, bookingId: bookingId || null },
     });
+
+    console.log('✅ Report saved to database:', report.id);
 
     // Fire-and-forget — don't let these block or fail the response
     trustSvc.updateTrustScore(reportedId, 'reportReceived').catch(console.error);
@@ -53,12 +60,13 @@ async function submitReport(req, res) {
       }
     }).catch(console.error);
 
-    console.log(`🚨 Report: ${type} against ${reportedId} by ${req.user.id}`);
     res.json({
       success: true,
-      data: { report, message: 'Report submitted. Our team will review within 24 hours.' },
+      data: { report, message: 'Report submitted successfully. Our team will review it within 24 hours.' },
     });
   } catch (err) {
+    console.error('❌ submitReport error:', err.message);
+    console.error('❌ Full error:', err);
     res.status(500).json({ success: false, message: err.message });
   }
 }
@@ -117,21 +125,29 @@ async function getMyReports(req, res) {
 
 async function getAllReports(req, res) {
   try {
+    console.log('📋 Admin fetching reports...');
+    console.log('📋 Admin user:', req.user.id, req.user.role);
+
     const { status, type } = req.query;
     const where = {};
     if (status) where.status = status;
     if (type) where.type = type;
 
+    console.log('📋 Query filters:', where);
+
     const reports = await prisma.report.findMany({
       where,
       include: {
-        reporter: { select: { name: true, phone: true } },
-        reported: { select: { name: true, phone: true, role: true } },
+        reporter: { select: { id: true, name: true, phone: true, role: true } },
+        reported: { select: { id: true, name: true, phone: true, role: true } },
       },
       orderBy: { createdAt: 'desc' },
     });
+
+    console.log(`✅ Found ${reports.length} reports`);
     res.json({ success: true, data: reports });
   } catch (err) {
+    console.error('❌ getAllReports error:', err.message);
     res.status(500).json({ success: false, message: err.message });
   }
 }
@@ -357,23 +373,31 @@ async function getMyAppeal(req, res) {
 
 async function getAllAppeals(req, res) {
   try {
+    console.log('⚖️ Admin fetching appeals...');
+
     const { status } = req.query;
-    const where = status ? { status } : {};
+    const where = {};
+    if (status) where.status = status;
 
     const appeals = await prisma.suspensionAppeal.findMany({
       where,
       include: {
         user: {
           select: {
-            name: true, phone: true, role: true, createdAt: true, deviceToken: true,
-            provider: { select: { businessName: true, category: true, rating: true, totalReviews: true } },
+            id: true, name: true, phone: true, role: true, createdAt: true,
+            provider: {
+              select: { businessName: true, category: true, rating: true, totalReviews: true },
+            },
           },
         },
       },
       orderBy: { createdAt: 'desc' },
     });
+
+    console.log(`✅ Found ${appeals.length} appeals`);
     res.json({ success: true, data: appeals });
   } catch (err) {
+    console.error('❌ getAllAppeals error:', err.message);
     res.status(500).json({ success: false, message: err.message });
   }
 }

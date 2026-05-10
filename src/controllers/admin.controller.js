@@ -225,7 +225,16 @@ async function deleteUser(req, res) {
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
     if (user.role === 'ADMIN') return res.status(403).json({ success: false, message: 'Cannot delete an admin' });
 
-    await prisma.user.delete({ where: { id: req.params.id } });
+    const id = req.params.id;
+
+    // Delete trust-related records first (migration adds CASCADE but this is a safety net)
+    await prisma.trustScore.deleteMany({ where: { userId: id } });
+    await prisma.suspensionAppeal.deleteMany({ where: { userId: id } });
+    await prisma.fraudAlert.deleteMany({ where: { userId: id } });
+    await prisma.report.deleteMany({ where: { OR: [{ reporterId: id }, { reportedId: id }] } });
+    await prisma.verificationRequest.deleteMany({ where: { userId: id } });
+
+    await prisma.user.delete({ where: { id } });
     console.log(`🗑️ Admin deleted user: ${user.name} (${user.phone})`);
     res.json({ success: true, data: { message: 'User deleted' } });
   } catch (err) {

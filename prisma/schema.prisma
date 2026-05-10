@@ -570,7 +570,7 @@ enum DiscountType {
 model TrustScore {
   id            String     @id @default(cuid())
   userId        String     @unique
-  user          User       @relation(fields: [userId], references: [id])
+  user          User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   score         Float      @default(50)
   level         TrustLevel @default(NEW)
   totalReports  Int        @default(0)
@@ -598,9 +598,9 @@ enum TrustLevel {
 model Report {
   id          String       @id @default(cuid())
   reporterId  String
-  reporter    User         @relation("ReporterReports", fields: [reporterId], references: [id])
+  reporter    User         @relation("ReporterReports", fields: [reporterId], references: [id], onDelete: Cascade)
   reportedId  String
-  reported    User         @relation("ReportedReports", fields: [reportedId], references: [id])
+  reported    User         @relation("ReportedReports", fields: [reportedId], references: [id], onDelete: Cascade)
   type        ReportType
   description String
   evidence    String?
@@ -634,7 +634,7 @@ enum ReportStatus {
 model FraudAlert {
   id          String        @id @default(cuid())
   userId      String
-  user        User          @relation(fields: [userId], references: [id])
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   type        FraudType
   description String
   severity    FraudSeverity
@@ -662,7 +662,7 @@ enum FraudSeverity {
 model VerificationRequest {
   id        String             @id @default(cuid())
   userId    String
-  user      User               @relation(fields: [userId], references: [id])
+  user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   type      VerificationType
   status    VerificationStatus @default(PENDING)
   documents String[]
@@ -682,7 +682,7 @@ enum VerificationType {
 model SuspensionAppeal {
   id               String       @id @default(cuid())
   userId           String
-  user             User         @relation(fields: [userId], references: [id])
+  user             User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   suspensionReason String
   appealReason     String
   explanation      String

@@ -22,17 +22,25 @@ async function fixDatabase() {
     await client.connect();
     console.log('[pre-deploy] Connected.');
 
-    // Step 1: Mark the failed migration as rolled back
+    // Only clean up if the migration is still in a failed state (finished_at IS NULL).
+    // If it was already fixed, skip entirely to avoid dropping live data.
     const r1 = await client.query(
       `UPDATE "_prisma_migrations"
        SET "rolled_back_at" = NOW()
        WHERE "migration_name" = $1
-       AND "finished_at" IS NULL`,
+       AND "finished_at" IS NULL
+       AND "rolled_back_at" IS NULL`,
       [MIGRATION_NAME]
     );
-    console.log(`[pre-deploy] Step 1 — Marked failed migration as rolled back (${r1.rowCount} rows updated).`);
 
-    // Step 2: Drop any partially created trust tables
+    if (r1.rowCount === 0) {
+      console.log('[pre-deploy] No failed migration found — nothing to clean up.');
+      return;
+    }
+
+    console.log(`[pre-deploy] Found failed migration — rolling back and cleaning up.`);
+
+    // Drop only the partially created trust tables (safe because migration failed)
     const drops = [
       `DROP TABLE IF EXISTS "TrustScore" CASCADE`,
       `DROP TABLE IF EXISTS "Report" CASCADE`,
@@ -49,7 +57,7 @@ async function fixDatabase() {
     for (const sql of drops) {
       await client.query(sql);
     }
-    console.log('[pre-deploy] Step 2 — Dropped any partial trust tables and enums.');
+    console.log('[pre-deploy] Dropped partial trust tables and enums.');
 
   } catch (err) {
     console.log('[pre-deploy] DB fix note:', err.message);

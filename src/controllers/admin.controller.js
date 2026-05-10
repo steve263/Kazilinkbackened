@@ -224,78 +224,70 @@ async function deleteUser(req, res) {
     const userId = req.params.id;
     console.log(`🗑️ Starting delete for user: ${userId}`);
 
-    await prisma.$transaction(async (tx) => {
-      const provider = await tx.provider.findUnique({ where: { userId } }).catch(() => null);
+    const provider = await prisma.provider.findUnique({ where: { userId } }).catch(() => null);
 
-      // Step 1: Delete booking-related records first (payments, reviews, notifications)
-      if (provider) {
-        const providerBookings = await tx.booking.findMany({
-          where: { providerId: provider.id },
-          select: { id: true },
-        });
-        const providerBookingIds = providerBookings.map((b) => b.id);
+    // Step 1: Collect all booking IDs and delete their children
+    const allBookingIds = [];
 
-        if (providerBookingIds.length > 0) {
-          await tx.payment.deleteMany({ where: { bookingId: { in: providerBookingIds } } }).catch(() => {});
-          await tx.review.deleteMany({ where: { bookingId: { in: providerBookingIds } } }).catch(() => {});
-          await tx.notification.deleteMany({ where: { bookingId: { in: providerBookingIds } } }).catch(() => {});
-        }
+    if (provider) {
+      const providerBookings = await prisma.booking.findMany({ where: { providerId: provider.id }, select: { id: true } });
+      providerBookings.forEach((b) => allBookingIds.push(b.id));
+    }
 
-        await tx.booking.deleteMany({ where: { providerId: provider.id } }).catch(() => {});
-      }
+    const customerBookings = await prisma.booking.findMany({ where: { customerId: userId }, select: { id: true } });
+    customerBookings.forEach((b) => allBookingIds.push(b.id));
 
-      const customerBookings = await tx.booking.findMany({
-        where: { customerId: userId },
-        select: { id: true },
-      });
-      const customerBookingIds = customerBookings.map((b) => b.id);
+    if (allBookingIds.length > 0) {
+      await prisma.payment.deleteMany({ where: { bookingId: { in: allBookingIds } } }).catch(() => {});
+      await prisma.review.deleteMany({ where: { bookingId: { in: allBookingIds } } }).catch(() => {});
+      await prisma.notification.deleteMany({ where: { bookingId: { in: allBookingIds } } }).catch(() => {});
+    }
 
-      if (customerBookingIds.length > 0) {
-        await tx.payment.deleteMany({ where: { bookingId: { in: customerBookingIds } } }).catch(() => {});
-        await tx.review.deleteMany({ where: { bookingId: { in: customerBookingIds } } }).catch(() => {});
-        await tx.notification.deleteMany({ where: { bookingId: { in: customerBookingIds } } }).catch(() => {});
-      }
+    // Step 2: Delete bookings
+    if (provider) {
+      await prisma.booking.deleteMany({ where: { providerId: provider.id } }).catch(() => {});
+    }
+    await prisma.booking.deleteMany({ where: { customerId: userId } }).catch(() => {});
 
-      await tx.booking.deleteMany({ where: { customerId: userId } }).catch(() => {});
+    // Step 3: Delete provider records
+    if (provider) {
+      await prisma.service.deleteMany({ where: { providerId: provider.id } }).catch(() => {});
+      await prisma.review.deleteMany({ where: { providerId: provider.id } }).catch(() => {});
+      await prisma.providerWaitlist.deleteMany({ where: { providerId: provider.id } }).catch(() => {});
+      await prisma.portfolioVideo.deleteMany({ where: { providerId: provider.id } }).catch(() => {});
+      await prisma.promotion.deleteMany({ where: { providerId: provider.id } }).catch(() => {});
+      await prisma.verificationRequest.deleteMany({ where: { userId } }).catch(() => {});
+      await prisma.certificate.deleteMany({ where: { providerId: provider.id } }).catch(() => {});
+      await prisma.provider.delete({ where: { userId } }).catch(() => {});
+    }
 
-      // Step 2: Delete provider-specific records then the provider row
-      if (provider) {
-        await tx.service.deleteMany({ where: { providerId: provider.id } }).catch(() => {});
-        await tx.review.deleteMany({ where: { providerId: provider.id } }).catch(() => {});
-        await tx.providerWaitlist.deleteMany({ where: { providerId: provider.id } }).catch(() => {});
-        await tx.outstandingCommission.deleteMany({ where: { providerId: provider.id } }).catch(() => {});
-        await tx.provider.delete({ where: { userId } }).catch(() => {});
-      }
+    // Step 4: Delete all other user-linked records
+    await prisma.message.deleteMany({ where: { OR: [{ senderId: userId }, { receiverId: userId }] } }).catch(() => {});
+    await prisma.notification.deleteMany({ where: { userId } }).catch(() => {});
+    await prisma.review.deleteMany({ where: { customerId: userId } }).catch(() => {});
+    await prisma.report.deleteMany({ where: { OR: [{ reporterId: userId }, { reportedId: userId }] } }).catch(() => {});
+    await prisma.fraudAlert.deleteMany({ where: { userId } }).catch(() => {});
+    await prisma.trustScore.deleteMany({ where: { userId } }).catch(() => {});
+    await prisma.suspensionAppeal.deleteMany({ where: { userId } }).catch(() => {});
+    await prisma.testimonial.deleteMany({ where: { customerId: userId } }).catch(() => {});
+    await prisma.follow.deleteMany({ where: { OR: [{ followerId: userId }, { providerId: userId }] } }).catch(() => {});
+    await prisma.reward.deleteMany({ where: { userId } }).catch(() => {});
+    await prisma.referral.deleteMany({ where: { OR: [{ referrerId: userId }, { referredId: userId }] } }).catch(() => {});
+    await prisma.tipComment.deleteMany({ where: { userId } }).catch(() => {});
+    await prisma.tip.deleteMany({ where: { authorId: userId } }).catch(() => {});
+    await prisma.videoComment.deleteMany({ where: { userId } }).catch(() => {});
+    await prisma.videoLike.deleteMany({ where: { userId } }).catch(() => {});
+    await prisma.videoReport.deleteMany({ where: { userId } }).catch(() => {});
+    await prisma.video.deleteMany({ where: { userId } }).catch(() => {});
+    await prisma.like.deleteMany({ where: { userId } }).catch(() => {});
+    await prisma.comment.deleteMany({ where: { userId } }).catch(() => {});
+    await prisma.providerWaitlist.deleteMany({ where: { customerId: userId } }).catch(() => {});
+    await prisma.withdrawal.deleteMany({ where: { userId } }).catch(() => {});
 
-      // Step 3: Delete all other user-linked records
-      await tx.message.deleteMany({ where: { OR: [{ senderId: userId }, { receiverId: userId }] } }).catch(() => {});
-      await tx.notification.deleteMany({ where: { userId } }).catch(() => {});
-      await tx.review.deleteMany({ where: { customerId: userId } }).catch(() => {});
-      await tx.report.deleteMany({ where: { OR: [{ reporterId: userId }, { reportedId: userId }] } }).catch(() => {});
-      await tx.fraudAlert.deleteMany({ where: { userId } }).catch(() => {});
-      await tx.trustScore.deleteMany({ where: { userId } }).catch(() => {});
-      await tx.suspensionAppeal.deleteMany({ where: { userId } }).catch(() => {});
-      await tx.refundRequest.deleteMany({ where: { userId } }).catch(() => {});
-      await tx.dispute.deleteMany({ where: { raisedBy: userId } }).catch(() => {});
-      await tx.tipComment.deleteMany({ where: { userId } }).catch(() => {});
-      await tx.tip.deleteMany({ where: { authorId: userId } }).catch(() => {});
-      await tx.videoComment.deleteMany({ where: { userId } }).catch(() => {});
-      await tx.video.deleteMany({ where: { userId } }).catch(() => {});
-      await tx.testimonial.deleteMany({ where: { customerId: userId } }).catch(() => {});
-      await tx.follow.deleteMany({ where: { OR: [{ followerId: userId }, { providerId: userId }] } }).catch(() => {});
-      await tx.reward.deleteMany({ where: { userId } }).catch(() => {});
-      await tx.referral.deleteMany({ where: { OR: [{ referrerId: userId }, { referredId: userId }] } }).catch(() => {});
-      await tx.postComment.deleteMany({ where: { userId } }).catch(() => {});
-      await tx.providerWaitlist.deleteMany({ where: { customerId: userId } }).catch(() => {});
-      await tx.ticketMessage.deleteMany({ where: { senderId: userId } }).catch(() => {});
-      await tx.supportTicket.deleteMany({ where: { userId } }).catch(() => {});
+    // Step 5: Delete the user
+    await prisma.user.delete({ where: { id: userId } });
 
-      // Step 4: Delete the user
-      await tx.user.delete({ where: { id: userId } });
-
-      console.log(`✅ User ${userId} deleted successfully`);
-    });
-
+    console.log(`✅ User ${userId} deleted successfully`);
     res.json({ success: true, data: { message: 'User deleted successfully' } });
   } catch (err) {
     console.error('❌ deleteUser error:', err.message);

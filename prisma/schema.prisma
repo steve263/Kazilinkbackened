@@ -412,6 +412,8 @@ model Promotion {
   providerId    String
   title         String
   description   String?
+  imageUrl      String?
+  originalPrice Int?
   discountType  DiscountType @default(PERCENTAGE)
   discountValue Float
   startDate     DateTime     @default(now())

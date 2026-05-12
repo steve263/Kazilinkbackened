@@ -1,5 +1,6 @@
 const prisma = require('../config/db');
 const { getIo } = require('../config/socket');
+const { cloudinary } = require('../middleware/upload');
 
 // GET /api/messages/conversations
 async function getConversations(req, res) {
@@ -152,11 +153,21 @@ async function markAsRead(req, res) {
 // POST /api/messages/upload  — image via multer/cloudinary
 async function uploadImage(req, res) {
   try {
-    if (!req.file?.path) {
+    if (!req.file?.buffer) {
       return res.status(400).json({ success: false, message: 'No image provided' });
     }
-    res.json({ success: true, data: { url: req.file.path } });
+
+    const url = await new Promise((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream(
+        { folder: 'kazishow/messages', resource_type: 'image' },
+        (err, result) => { if (err) reject(err); else resolve(result.secure_url); }
+      );
+      stream.end(req.file.buffer);
+    });
+
+    res.json({ success: true, data: { url } });
   } catch (err) {
+    console.error('uploadImage:', err.message);
     res.status(500).json({ success: false, message: 'Upload failed' });
   }
 }

@@ -234,7 +234,13 @@ async function login(req, res) {
       });
     }
 
-    if (!user || !(await bcrypt.compare(password, user.password))) {
+    if (!user) {
+      return res.status(401).json({ success: false, message: 'Invalid phone or password' });
+    }
+    if (!user.password) {
+      return res.status(401).json({ success: false, message: 'This account uses Google Sign-In. Please sign in with Google.' });
+    }
+    if (!(await bcrypt.compare(password, user.password))) {
       return res.status(401).json({ success: false, message: 'Invalid phone or password' });
     }
 
@@ -280,6 +286,9 @@ async function changePassword(req, res) {
       return res.status(400).json({ success: false, message: 'New password must be at least 6 characters' });
     }
     const user = await prisma.user.findUnique({ where: { id: req.user.id } });
+    if (!user.password) {
+      return res.status(400).json({ success: false, message: 'Google accounts do not have a password. Please use Google Sign-In.' });
+    }
     const valid = await bcrypt.compare(currentPassword, user.password);
     if (!valid) {
       return res.status(401).json({ success: false, message: 'Current password is incorrect' });
@@ -290,6 +299,62 @@ async function changePassword(req, res) {
     res.json({ success: true, data: { message: 'Password updated successfully' } });
   } catch (err) {
     console.error('❌ changePassword error:', err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+async function googleAuth(req, res) {
+  try {
+    const { accessToken } = req.body;
+    if (!accessToken) {
+      return res.status(400).json({ success: false, message: 'accessToken is required' });
+    }
+
+    // Verify token and fetch profile from Google
+    const resp = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!resp.ok) {
+      return res.status(401).json({ success: false, message: 'Invalid Google token' });
+    }
+    const profile = await resp.json();
+    // profile: { sub, email, name, picture, email_verified }
+
+    // Find existing user by googleId or email
+    let user = await prisma.user.findFirst({
+      where: { OR: [{ googleId: profile.sub }, { email: profile.email }] },
+      include: { provider: true },
+    });
+
+    if (!user) {
+      user = await prisma.user.create({
+        data: {
+          googleId: profile.sub,
+          email: profile.email,
+          name: profile.name,
+          profilePhoto: profile.picture,
+          role: 'CUSTOMER',
+          location: 'Nairobi',
+          referralCode: generateReferralCode(profile.name),
+        },
+        include: { provider: true },
+      });
+      console.log(`✅ Google sign-up: ${user.name} (${user.email})`);
+    } else if (!user.googleId) {
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: { googleId: profile.sub, ...(!user.profilePhoto && { profilePhoto: profile.picture }) },
+        include: { provider: true },
+      });
+      console.log(`🔗 Google linked: ${user.name}`);
+    } else {
+      console.log(`🔑 Google login: ${user.name}`);
+    }
+
+    const token = generateToken(user);
+    res.json({ success: true, data: { user: sanitize(user), token } });
+  } catch (err) {
+    console.error('❌ googleAuth error:', err.message);
     res.status(500).json({ success: false, message: err.message });
   }
 }
@@ -305,4 +370,4 @@ async function deactivateAccount(req, res) {
   }
 }
 
-module.exports = { register, login, refresh, saveDeviceToken, changePassword, deactivateAccount };
+module.exports = { register, login, refresh, saveDeviceToken, changePassword, deactivateAccount, googleAuth };

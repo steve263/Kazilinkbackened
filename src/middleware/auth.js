@@ -16,6 +16,14 @@ async function auth(req, res, next) {
       return res.status(401).json({ success: false, message: 'User no longer exists' });
     }
 
+    if (!user.isActive) {
+      return res.status(403).json({
+        success: false,
+        code: 'ACCOUNT_DEACTIVATED',
+        message: 'Your account has been deactivated. Contact support@kazishow.co.ke to reactivate.',
+      });
+    }
+
     if (user.isSuspended) {
       return res.status(403).json({
         success: false,

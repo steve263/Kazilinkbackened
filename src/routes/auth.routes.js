@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { register, login, refresh, saveDeviceToken, changePassword } = require('../controllers/auth.controller');
+const { register, login, refresh, saveDeviceToken, changePassword, deactivateAccount } = require('../controllers/auth.controller');
 const { forgotPassword, verifyOTP, resetPassword } = require('../controllers/password.controller');
 const { auth, authSuspended } = require('../middleware/auth');
 const prisma = require('../config/db');
@@ -10,6 +10,7 @@ router.post('/login', login);
 router.post('/refresh', auth, refresh);
 router.put('/device-token', auth, saveDeviceToken);
 router.put('/change-password', auth, changePassword);
+router.put('/deactivate', auth, deactivateAccount);
 
 // Password reset flow (no auth required)
 router.post('/forgot-password', forgotPassword);

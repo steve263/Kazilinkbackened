@@ -294,4 +294,15 @@ async function changePassword(req, res) {
   }
 }
 
-module.exports = { register, login, refresh, saveDeviceToken, changePassword };
+async function deactivateAccount(req, res) {
+  try {
+    await prisma.user.update({ where: { id: req.user.id }, data: { isActive: false } });
+    console.log(`🔒 Account deactivated for user ${req.user.id}`);
+    res.json({ success: true, data: { message: 'Account deactivated successfully' } });
+  } catch (err) {
+    console.error('❌ deactivateAccount error:', err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+module.exports = { register, login, refresh, saveDeviceToken, changePassword, deactivateAccount };

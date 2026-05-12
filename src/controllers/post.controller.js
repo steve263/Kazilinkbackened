@@ -1,8 +1,13 @@
 const prisma = require('../config/db');
 
-const IMAGE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
-function imageExpired(createdAt) {
-  return Date.now() - new Date(createdAt).getTime() > IMAGE_TTL_MS;
+const POST_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+// Fire-and-forget: delete posts older than 24 hours from the DB
+function cleanupExpiredPosts() {
+  const cutoff = new Date(Date.now() - POST_TTL_MS);
+  prisma.post.deleteMany({ where: { createdAt: { lt: cutoff } } })
+    .then(({ count }) => { if (count > 0) console.log(`🧹 Deleted ${count} expired post(s)`); })
+    .catch(console.error);
 }
 
 const POST_INCLUDE = {
@@ -23,9 +28,12 @@ const POST_INCLUDE = {
 
 async function getPosts(req, res) {
   try {
+    cleanupExpiredPosts();
+
     const { type, hashtag, providerId, followed } = req.query;
 
-    const where = {};
+    const cutoff = new Date(Date.now() - POST_TTL_MS);
+    const where = { createdAt: { gte: cutoff } };
     if (type) where.type = type.toUpperCase();
     if (hashtag) where.hashtags = { has: hashtag.startsWith('#') ? hashtag : `#${hashtag}` };
     if (providerId) where.providerId = providerId;
@@ -61,7 +69,7 @@ async function getPosts(req, res) {
     const enriched = posts.filter((p) => p.provider).map((p) => ({
       id: p.id,
       caption: p.caption,
-      image: imageExpired(p.createdAt) ? null : p.image,
+      image: p.image,
       type: p.type,
       hashtags: p.hashtags,
       discountPct: p.discountPct,

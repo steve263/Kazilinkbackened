@@ -114,12 +114,17 @@ app.use((err, req, res, next) => {
 
 // ─── Start ─────────────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 5000;
+const { initReminders } = require('./services/reminder.service');
+
 server.listen(PORT, () => {
   console.log('');
   console.log('🚀 KaziShow Backend running on port', PORT);
   console.log('📊 Environment:', process.env.NODE_ENV || 'development');
   console.log('🔗 Health:', `http://localhost:${PORT}/health`);
   console.log('');
+
+  // Start booking reminder cron jobs
+  initReminders();
 });
 
 module.exports = { app, server };

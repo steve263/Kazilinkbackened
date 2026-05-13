@@ -309,6 +309,74 @@ function tplTestimonialRejected({ customerName, reason }) {
   `);
 }
 
+// 8. Booking reminder
+function tplBookingReminder({ name, role, providerName, customerName, customerPhone, serviceName, scheduledDate, scheduledTime, address, amount, label }) {
+  const isProvider = role === 'provider';
+  return layout(`
+    <div style="text-align:center;margin-bottom:24px;">
+      <div style="font-size:52px;margin-bottom:8px;">⏰</div>
+      <h2 style="margin:0 0 6px;color:#1a1714;font-size:22px;font-weight:900;">
+        ${isProvider ? 'Job Reminder!' : 'Booking Reminder!'}
+      </h2>
+      <p style="color:#6b7280;font-size:14px;margin:0;">
+        Hi <strong>${name}</strong>, you have ${isProvider ? 'a job' : 'a booking'} in <strong style="color:#FF6B2B;">${label}</strong>
+      </p>
+    </div>
+
+    <div style="background:#fff7f3;border-left:4px solid #FF6B2B;border-radius:0 10px 10px 0;padding:14px 18px;margin-bottom:22px;">
+      <p style="margin:0;color:#FF6B2B;font-weight:700;font-size:15px;">⏰ ${label} remaining</p>
+      <p style="margin:4px 0 0;color:#6b7280;font-size:13px;">${isProvider ? 'Make sure you arrive on time!' : 'Please be ready at the location.'}</p>
+    </div>
+
+    <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8f7f4;border-radius:12px;margin-bottom:24px;">
+      <tr><td style="padding:20px 22px;">
+        <table width="100%" cellpadding="0" cellspacing="0">
+          ${isProvider ? `
+          <tr>
+            <td style="padding:6px 0;color:#6b7280;font-size:13px;width:120px;">Customer</td>
+            <td style="padding:6px 0;color:#1a1714;font-size:14px;font-weight:700;">${customerName}</td>
+          </tr>
+          <tr style="border-top:1px solid #ebebeb;">
+            <td style="padding:6px 0;color:#6b7280;font-size:13px;">Phone</td>
+            <td style="padding:6px 0;color:#FF6B2B;font-size:14px;font-weight:700;">${customerPhone}</td>
+          </tr>` : `
+          <tr>
+            <td style="padding:6px 0;color:#6b7280;font-size:13px;width:120px;">Provider</td>
+            <td style="padding:6px 0;color:#1a1714;font-size:14px;font-weight:700;">${providerName}</td>
+          </tr>`}
+          <tr style="border-top:1px solid #ebebeb;">
+            <td style="padding:6px 0;color:#6b7280;font-size:13px;">Service</td>
+            <td style="padding:6px 0;color:#1a1714;font-size:14px;font-weight:700;">${serviceName}</td>
+          </tr>
+          <tr style="border-top:1px solid #ebebeb;">
+            <td style="padding:6px 0;color:#6b7280;font-size:13px;">Date</td>
+            <td style="padding:6px 0;color:#1a1714;font-size:14px;font-weight:700;">${scheduledDate}</td>
+          </tr>
+          <tr style="border-top:1px solid #ebebeb;">
+            <td style="padding:6px 0;color:#6b7280;font-size:13px;">Time</td>
+            <td style="padding:6px 0;color:#1a1714;font-size:14px;font-weight:700;">${scheduledTime}</td>
+          </tr>
+          <tr style="border-top:1px solid #ebebeb;">
+            <td style="padding:6px 0;color:#6b7280;font-size:13px;">Location</td>
+            <td style="padding:6px 0;color:#1a1714;font-size:14px;font-weight:700;">${address}</td>
+          </tr>
+          <tr style="border-top:1px solid #ebebeb;">
+            <td style="padding:6px 0;color:#6b7280;font-size:13px;">Amount</td>
+            <td style="padding:6px 0;color:#FF6B2B;font-size:16px;font-weight:900;">KSh ${Number(amount).toLocaleString()}</td>
+          </tr>
+        </table>
+      </td></tr>
+    </table>
+
+    <div style="text-align:center;">
+      <a href="https://kazishow.vercel.app/${isProvider ? 'provider/notifications' : 'profile'}"
+         style="display:inline-block;background:linear-gradient(135deg,#FF6B2B,#FF8C42);color:#ffffff;text-decoration:none;font-size:15px;font-weight:800;padding:14px 36px;border-radius:50px;box-shadow:0 4px 14px rgba(255,107,43,0.35);">
+        View Booking →
+      </a>
+    </div>
+  `);
+}
+
 // ─── Exports ──────────────────────────────────────────────────────────────────
 
 module.exports = {
@@ -320,4 +388,5 @@ module.exports = {
   tplTipRejected,
   tplTestimonialApproved,
   tplTestimonialRejected,
+  tplBookingReminder,
 };

@@ -76,4 +76,31 @@ async function aiChat(req, res) {
   }
 }
 
-module.exports = { aiChat };
+async function contactForm(req, res) {
+  try {
+    const { name, email, subject, message } = req.body;
+
+    if (!message || !message.trim()) {
+      return res.status(400).json({ success: false, message: 'Message is required' });
+    }
+
+    // Log to console so it appears in Railway logs
+    console.log('📩 Contact form submission:', {
+      name: name || 'Anonymous',
+      email: email || 'Not provided',
+      subject: subject || 'No subject',
+      message,
+      receivedAt: new Date().toISOString(),
+    });
+
+    res.json({
+      success: true,
+      message: 'Message received. We will get back to you within 1 business day.',
+    });
+  } catch (err) {
+    console.error('❌ Contact form error:', err.message);
+    res.status(500).json({ success: false, message: 'Failed to send message. Please try WhatsApp.' });
+  }
+}
+
+module.exports = { aiChat, contactForm };

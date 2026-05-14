@@ -194,6 +194,26 @@ function initSocket(httpServer) {
       if (data.to) io.to(data.to).emit('ice_candidate', { candidate: data.candidate });
     });
 
+    // ─── Video call signaling ─────────────────────────────────────────────────
+    socket.on('video_call_offer', (data) => {
+      const { to, from, fromName, fromPhoto, signal } = data;
+      console.log(`🎥 Video call from ${from} → ${to}`);
+      io.to(to).emit('incoming_video_call', { from, fromName, fromPhoto, signal });
+    });
+
+    socket.on('video_call_answer', (data) => {
+      console.log(`✅ Video call answered → ${data.to}`);
+      io.to(data.to).emit('video_call_answered', { signal: data.signal });
+    });
+
+    socket.on('video_call_ended', (data) => {
+      if (data.to) io.to(data.to).emit('video_call_ended', {});
+    });
+
+    socket.on('video_call_rejected', (data) => {
+      if (data.to) io.to(data.to).emit('video_call_rejected', {});
+    });
+
     // ─── Disconnect ───────────────────────────────────────────────────────────
     socket.on('disconnect', async () => {
       liveVisitorCount = Math.max(0, liveVisitorCount - 1);

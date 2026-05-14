@@ -47,7 +47,7 @@ router.put('/portfolio-videos/:id/reject',    ...adminOnly, ctrl.rejectPortfolio
 router.get('/withdrawals',                    ...adminOnly, getAdminWithdrawals);
 router.put('/withdrawals/:id/process',        ...adminOnly, processWithdrawal);
 
-// Kazi Videos management (delete only — no approval flow)
+// ShowReel management (delete only — no approval flow)
 router.get('/videos',                         ...adminOnly, videoCtrl.adminGetVideos);
 router.get('/videos/reported',                ...adminOnly, (req, res, next) => { req.query.reported = 'true'; next(); }, videoCtrl.adminGetVideos);
 router.delete('/videos/:id',                  ...adminOnly, videoCtrl.adminDeleteVideo);

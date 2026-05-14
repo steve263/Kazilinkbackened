@@ -52,6 +52,7 @@ model User {
   fraudAlerts          FraudAlert[]
   verificationRequests VerificationRequest[]
   suspensionAppeals    SuspensionAppeal[]
+  interactions         UserInteraction[]
 }
 
 model Provider {
@@ -97,6 +98,10 @@ model Provider {
   testimonials       Testimonial[]
   videos             Video[]
   withdrawals        Withdrawal[]
+  schedule           ProviderAvailability?
+  payouts            Payout[]
+  location           ProviderLocation?
+  interactions       UserInteraction[]
 }
 
 model ProviderWaitlist {
@@ -169,6 +174,8 @@ model Payment {
   id                String          @id @default(cuid())
   bookingId         String          @unique
   amount            Int
+  providerAmount    Float?
+  commission        Float?
   phone             String
   mpesaRef          String?
   checkoutRequestId String?
@@ -706,4 +713,82 @@ enum AppealStatus {
   APPROVED
   REJECTED
   MORE_INFO_NEEDED
+}
+
+model ProviderAvailability {
+  id           String                  @id @default(cuid())
+  providerId   String                  @unique
+  provider     Provider                @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  monday       Boolean                 @default(true)
+  tuesday      Boolean                 @default(true)
+  wednesday    Boolean                 @default(true)
+  thursday     Boolean                 @default(true)
+  friday       Boolean                 @default(true)
+  saturday     Boolean                 @default(false)
+  sunday       Boolean                 @default(false)
+  startTime    String                  @default("08:00")
+  endTime      String                  @default("18:00")
+  slotDuration Int                     @default(60)
+  breakStart   String?
+  breakEnd     String?
+  updatedAt    DateTime                @updatedAt
+  createdAt    DateTime                @default(now())
+  exceptions   AvailabilityException[]
+}
+
+model AvailabilityException {
+  id             String               @id @default(cuid())
+  availabilityId String
+  availability   ProviderAvailability @relation(fields: [availabilityId], references: [id], onDelete: Cascade)
+  date           DateTime
+  isAvailable    Boolean              @default(false)
+  reason         String?
+  createdAt      DateTime             @default(now())
+}
+
+model Payout {
+  id          String       @id @default(cuid())
+  providerId  String
+  provider    Provider     @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  amount      Float
+  phone       String
+  status      PayoutStatus @default(PENDING)
+  mpesaRef    String?
+  adminNote   String?
+  requestedAt DateTime     @default(now())
+  processedAt DateTime?
+}
+
+enum PayoutStatus {
+  PENDING
+  APPROVED
+  PROCESSING
+  COMPLETED
+  REJECTED
+}
+
+model ProviderLocation {
+  id         String   @id @default(cuid())
+  providerId String   @unique
+  provider   Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  lat        Float
+  lng        Float
+  heading    Float?
+  speed      Float?
+  updatedAt  DateTime @updatedAt
+  createdAt  DateTime @default(now())
+}
+
+model UserInteraction {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  providerId String
+  provider   Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  type       String
+  count      Int      @default(1)
+  lastAt     DateTime @default(now())
+  createdAt  DateTime @default(now())
+
+  @@unique([userId, providerId, type])
 }

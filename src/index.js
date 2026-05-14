@@ -70,7 +70,9 @@ app.use('/api/referrals',     require('./routes/referral.routes'));
 app.use('/api/promotions',    require('./routes/promotion.routes'));
 app.use('/api/trust',         require('./routes/trust.routes'));
 app.use('/api/support',       require('./routes/support.routes'));
-app.use('/api/analytics',     require('./routes/analytics.routes'));
+app.use('/api/analytics',        require('./routes/analytics.routes'));
+app.use('/api/earnings',         require('./routes/earnings.routes'));
+app.use('/api/recommendations',  require('./routes/recommendations.routes'));
 
 // Review routes (convenience aliases at /api/reviews)
 const { auth: _auth, requireRole: _role } = require('./middleware/auth');

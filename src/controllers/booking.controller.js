@@ -388,6 +388,34 @@ async function getTracking(req, res) {
     const { locationCache } = require('../config/socket');
     const cached = locationCache.get(booking.id);
 
+    // Fall back to DB if not in memory cache
+    let providerLocation = cached
+      ? { lat: cached.lat, lng: cached.lng, heading: cached.heading, updatedAt: new Date(cached.updatedAt) }
+      : null;
+
+    if (!providerLocation) {
+      const dbLoc = await prisma.providerLocation.findUnique({ where: { providerId: booking.providerId } });
+      if (dbLoc) {
+        providerLocation = { lat: dbLoc.lat, lng: dbLoc.lng, heading: dbLoc.heading, updatedAt: dbLoc.updatedAt };
+      } else {
+        providerLocation = { lat: booking.provider.user.lat, lng: booking.provider.user.lng, heading: null, updatedAt: null };
+      }
+    }
+
+    // Calculate distance + ETA
+    let distance = null;
+    let etaMinutes = null;
+    if (providerLocation?.lat && providerLocation?.lng && booking.lat && booking.lng) {
+      const R = 6371;
+      const dLat = (booking.lat - providerLocation.lat) * Math.PI / 180;
+      const dLng = (booking.lng - providerLocation.lng) * Math.PI / 180;
+      const a = Math.sin(dLat / 2) ** 2 +
+        Math.cos(providerLocation.lat * Math.PI / 180) * Math.cos(booking.lat * Math.PI / 180) *
+        Math.sin(dLng / 2) ** 2;
+      distance = Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)) * 10) / 10;
+      etaMinutes = Math.round((distance / 30) * 60);
+    }
+
     res.json({
       success: true,
       data: {
@@ -410,12 +438,39 @@ async function getTracking(req, res) {
           profileImage: booking.provider.profileImage,
           userId: booking.provider.userId,
           user: booking.provider.user,
+          phone: booking.provider.user.phone,
         },
-        providerLocation: cached || { lat: booking.provider.user.lat, lng: booking.provider.user.lng, updatedAt: null },
+        providerLocation,
+        distance,
+        etaMinutes,
       },
     });
   } catch (err) {
     console.error('❌ getTracking error:', err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+async function updateProviderLocation(req, res) {
+  try {
+    const { lat, lng, heading, speed } = req.body;
+    if (lat == null || lng == null) return res.status(400).json({ success: false, message: 'lat and lng required' });
+
+    const booking = await prisma.booking.findUnique({
+      where: { id: req.params.id },
+      include: { provider: { select: { id: true, userId: true } } },
+    });
+    if (!booking) return res.status(404).json({ success: false, message: 'Booking not found' });
+    if (booking.provider.userId !== req.user.id) return res.status(403).json({ success: false, message: 'Not authorized' });
+
+    await prisma.providerLocation.upsert({
+      where: { providerId: booking.providerId },
+      create: { providerId: booking.providerId, lat, lng, heading, speed },
+      update: { lat, lng, heading, speed },
+    });
+
+    res.json({ success: true });
+  } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
 }
@@ -541,5 +596,6 @@ module.exports = {
   updateStatus,
   cancelBooking,
   getTracking,
+  updateProviderLocation,
   notifyWaitlist,
 };

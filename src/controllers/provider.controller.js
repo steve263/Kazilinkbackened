@@ -367,6 +367,134 @@ async function getMyProvider(req, res) {
   }
 }
 
+// ── Availability Schedule ──────────────────────────────────────────────────────
+
+async function getSchedule(req, res) {
+  try {
+    const provider = await prisma.provider.findUnique({ where: { id: req.params.id } });
+    if (!provider) return res.status(404).json({ success: false, message: 'Provider not found' });
+
+    let schedule = await prisma.providerAvailability.findUnique({
+      where: { providerId: provider.id },
+      include: { exceptions: { orderBy: { date: 'asc' } } },
+    });
+
+    if (!schedule) {
+      schedule = await prisma.providerAvailability.create({
+        data: { providerId: provider.id },
+        include: { exceptions: true },
+      });
+    }
+
+    res.json({ success: true, data: schedule });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+async function updateSchedule(req, res) {
+  try {
+    const provider = await prisma.provider.findUnique({ where: { userId: req.user.id } });
+    if (!provider) return res.status(404).json({ success: false, message: 'Provider not found' });
+
+    const { monday, tuesday, wednesday, thursday, friday, saturday, sunday, startTime, endTime, slotDuration, breakStart, breakEnd } = req.body;
+
+    const schedule = await prisma.providerAvailability.upsert({
+      where: { providerId: provider.id },
+      create: { providerId: provider.id, monday, tuesday, wednesday, thursday, friday, saturday, sunday, startTime, endTime, slotDuration: slotDuration || 60, breakStart, breakEnd },
+      update: { monday, tuesday, wednesday, thursday, friday, saturday, sunday, startTime, endTime, slotDuration: slotDuration || 60, breakStart, breakEnd },
+      include: { exceptions: true },
+    });
+
+    res.json({ success: true, data: schedule });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+async function addException(req, res) {
+  try {
+    const provider = await prisma.provider.findUnique({ where: { userId: req.user.id } });
+    if (!provider) return res.status(404).json({ success: false, message: 'Provider not found' });
+
+    let schedule = await prisma.providerAvailability.findUnique({ where: { providerId: provider.id } });
+    if (!schedule) schedule = await prisma.providerAvailability.create({ data: { providerId: provider.id } });
+
+    const exception = await prisma.availabilityException.create({
+      data: { availabilityId: schedule.id, date: new Date(req.body.date), isAvailable: req.body.isAvailable ?? false, reason: req.body.reason || null },
+    });
+
+    res.json({ success: true, data: exception });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+async function removeException(req, res) {
+  try {
+    await prisma.availabilityException.delete({ where: { id: req.params.id } });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+async function getAvailableSlots(req, res) {
+  try {
+    const { date } = req.query;
+    if (!date) return res.status(400).json({ success: false, message: 'date query param is required' });
+
+    const provider = await prisma.provider.findUnique({ where: { id: req.params.id } });
+    if (!provider) return res.status(404).json({ success: false, message: 'Provider not found' });
+
+    let schedule = await prisma.providerAvailability.findUnique({
+      where: { providerId: provider.id },
+      include: { exceptions: true },
+    });
+
+    if (!schedule) {
+      schedule = { monday: true, tuesday: true, wednesday: true, thursday: true, friday: true, saturday: false, sunday: false, startTime: '08:00', endTime: '18:00', slotDuration: 60, exceptions: [] };
+    }
+
+    const selectedDate = new Date(date);
+    const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const dayName = dayNames[selectedDate.getDay()];
+
+    const exception = schedule.exceptions?.find(e => new Date(e.date).toDateString() === selectedDate.toDateString());
+    if (exception && !exception.isAvailable) return res.json({ success: true, data: { available: false, slots: [], reason: exception.reason || 'Not available on this date' } });
+    if (!exception && !schedule[dayName]) return res.json({ success: true, data: { available: false, slots: [], reason: 'Provider does not work on this day' } });
+
+    const slots = [];
+    const [sh, sm] = schedule.startTime.split(':').map(Number);
+    const [eh, em] = schedule.endTime.split(':').map(Number);
+    const duration = schedule.slotDuration || 60;
+    let cur = sh * 60 + sm;
+    const end = eh * 60 + em;
+
+    while (cur + duration <= end) {
+      const h = Math.floor(cur / 60), m = cur % 60;
+      const timeStr = `${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}`;
+      const ampm = h >= 12 ? 'PM' : 'AM';
+      const displayH = h % 12 || 12;
+      const displayTime = `${displayH}:${m.toString().padStart(2,'0')} ${ampm}`;
+
+      const dayStart = new Date(date); dayStart.setHours(0,0,0,0);
+      const dayEnd   = new Date(date); dayEnd.setHours(23,59,59,999);
+
+      const existing = await prisma.booking.findFirst({
+        where: { providerId: provider.id, scheduledDate: { gte: dayStart, lte: dayEnd }, scheduledTime: displayTime, status: { in: ['PENDING','ACCEPTED','EN_ROUTE','ARRIVED','IN_PROGRESS'] } },
+      });
+
+      slots.push({ time: displayTime, timeStr, available: !existing });
+      cur += duration;
+    }
+
+    res.json({ success: true, data: { available: true, slots } });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
 module.exports = {
   getProviders,
   getProvider,
@@ -380,4 +508,9 @@ module.exports = {
   addService,
   updateService,
   deleteService,
+  getSchedule,
+  updateSchedule,
+  addException,
+  removeException,
+  getAvailableSlots,
 };

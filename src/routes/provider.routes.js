@@ -4,6 +4,7 @@ const {
   getProviders, getProvider, getMyProvider, updateProvider,
   toggleOnline, updateLocation, getEarnings, getNearbyProviders,
   getAllServices, addService, updateService, deleteService,
+  getSchedule, updateSchedule, addException, removeException, getAvailableSlots,
 } = require('../controllers/provider.controller');
 const { requestWithdrawal, getMyWithdrawals } = require('../controllers/withdrawal.controller');
 const { auth, optionalAuth, requireRole } = require('../middleware/auth');
@@ -12,11 +13,17 @@ const prisma = require('../config/db');
 router.get('/', getProviders);
 router.get('/me', auth, requireRole('PROVIDER'), getMyProvider);
 router.get('/nearby', getNearbyProviders);
+// Availability schedule (must be before /:id)
+router.put('/schedule',            auth, requireRole('PROVIDER'), updateSchedule);
+router.post('/schedule/exception', auth, requireRole('PROVIDER'), addException);
+router.delete('/schedule/exception/:id', auth, requireRole('PROVIDER'), removeException);
 // Service CRUD (must be before /:id to avoid conflicts)
 router.put('/services/:serviceId', auth, requireRole('PROVIDER'), updateService);
 router.delete('/services/:serviceId', auth, requireRole('PROVIDER'), deleteService);
 // Per-provider routes
 router.get('/:id/earnings', auth, requireRole('PROVIDER', 'ADMIN'), getEarnings);
+router.get('/:id/schedule', getSchedule);
+router.get('/:id/available-slots', getAvailableSlots);
 router.post('/withdrawals', auth, requireRole('PROVIDER'), requestWithdrawal);
 router.get('/withdrawals/my', auth, requireRole('PROVIDER'), getMyWithdrawals);
 router.get('/:id/services', optionalAuth, getAllServices);

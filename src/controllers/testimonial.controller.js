@@ -1,10 +1,5 @@
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
-const emailSvc = require('../services/email.service');
-
-const EXPIRY_MS = 24 * 60 * 60 * 1000;
-const activeAfter = () => new Date(Date.now() - EXPIRY_MS);
-const addExpiry = (t) => ({ ...t, expiresAt: new Date(new Date(t.createdAt).getTime() + EXPIRY_MS).toISOString() });
 
 // POST - Submit testimonial (customer auth required)
 exports.submitTestimonial = async (req, res) => {
@@ -61,7 +56,7 @@ exports.submitTestimonial = async (req, res) => {
 exports.getApprovedTestimonials = async (req, res) => {
   try {
     const { category, skip = 0, limit = 10 } = req.query;
-    const where = { status: 'APPROVED', createdAt: { gt: activeAfter() } };
+    const where = { status: 'APPROVED' };
     if (category) where.category = category;
 
     const testimonials = await prisma.testimonial.findMany({
@@ -76,7 +71,7 @@ exports.getApprovedTestimonials = async (req, res) => {
 
     res.json({
       success: true,
-      data: testimonials.map(addExpiry),
+      data: testimonials,
       pagination: { skip: parseInt(skip), limit: parseInt(limit), total },
     });
   } catch (error) {
@@ -121,12 +116,6 @@ exports.approveTestimonial = async (req, res) => {
       },
     });
 
-    emailSvc.sendEmail({
-      to: testimonial.customer.email,
-      subject: '🌟 Your KaziShow Testimonial is Live!',
-      html: emailSvc.tplTestimonialApproved({ customerName: testimonial.customer.name }),
-    }).catch(console.error);
-
     res.json({ success: true, message: 'Testimonial approved', data: testimonial });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -141,7 +130,7 @@ exports.rejectTestimonial = async (req, res) => {
 
     const testimonial = await prisma.testimonial.update({
       where: { id },
-      data: { status: 'REJECTED', rejectReason: reason || null },
+      data: { status: 'REJECTED' },
       include: { customer: true },
     });
 
@@ -154,12 +143,6 @@ exports.rejectTestimonial = async (req, res) => {
         body: `Your testimonial was not approved. Reason: ${reason}`,
       },
     });
-
-    emailSvc.sendEmail({
-      to: testimonial.customer.email,
-      subject: 'Your KaziShow Testimonial Was Not Approved',
-      html: emailSvc.tplTestimonialRejected({ customerName: testimonial.customer.name, reason }),
-    }).catch(console.error);
 
     res.json({ success: true, message: 'Testimonial rejected', data: testimonial });
   } catch (error) {

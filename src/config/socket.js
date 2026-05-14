@@ -58,17 +58,37 @@ function initSocket(httpServer) {
     });
 
     // ─── Live provider location tracking ─────────────────────────────────────
-    socket.on('provider_location', async ({ bookingId, lat, lng }) => {
+    socket.on('provider_location', async ({ bookingId, lat, lng, heading, speed }) => {
       if (!bookingId || lat == null || lng == null) return;
-      locationCache.set(bookingId, { lat, lng, updatedAt: Date.now() });
+      locationCache.set(bookingId, { lat, lng, heading, updatedAt: Date.now() });
       try {
         const booking = await prisma.booking.findUnique({
           where: { id: bookingId },
-          select: { customerId: true },
+          include: { provider: { select: { id: true, businessName: true } } },
         });
-        if (booking) {
-          io.to(booking.customerId).emit('provider_location_update', { bookingId, lat, lng });
+        if (!booking) return;
+
+        // Persist to DB
+        await prisma.providerLocation.upsert({
+          where: { providerId: booking.providerId },
+          create: { providerId: booking.providerId, lat, lng, heading, speed },
+          update: { lat, lng, heading, speed },
+        }).catch(() => {});
+
+        // Calculate distance + ETA if booking has customer coordinates
+        let distance = null;
+        let etaMinutes = null;
+        if (booking.lat != null && booking.lng != null) {
+          distance = haversineKm(lat, lng, booking.lat, booking.lng);
+          etaMinutes = Math.round((distance / 30) * 60);
         }
+
+        io.to(booking.customerId).emit('provider_location_update', {
+          bookingId, lat, lng, heading,
+          distance: distance != null ? Math.round(distance * 10) / 10 : null,
+          etaMinutes,
+          providerName: booking.provider.businessName,
+        });
       } catch (err) {
         console.error('❌ provider_location error:', err.message);
       }
@@ -202,6 +222,17 @@ function initSocket(httpServer) {
 function getIo() {
   if (!io) throw new Error('Socket.io not initialized — call initSocket first');
   return io;
+}
+
+function haversineKm(lat1, lng1, lat2, lng2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 module.exports = { initSocket, getIo, locationCache };

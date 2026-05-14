@@ -9,12 +9,14 @@ const {
   updateStatus,
   cancelBooking,
   getTracking,
+  updateProviderLocation,
 } = require('../controllers/booking.controller');
 const { auth, requireRole } = require('../middleware/auth');
 
 router.post('/', auth, requireRole('CUSTOMER'), createBooking);
 router.get('/', auth, getBookings);
 router.get('/:id/tracking', auth, getTracking);
+router.post('/:id/location', auth, updateProviderLocation);
 router.get('/:id', auth, getBooking);
 router.put('/:id/accept', auth, requireRole('PROVIDER'), acceptBooking);
 router.put('/:id/decline', auth, requireRole('PROVIDER'), declineBooking);

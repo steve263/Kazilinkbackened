@@ -6,12 +6,37 @@ const pushSvc = require('./firebase.service');
 const emailSvc = require('./email.service');
 
 // ── Parse booking's actual datetime from date + time string ───────────────────
+// scheduledTime is stored as "HH:MM" in Africa/Nairobi (EAT = UTC+3).
+// We reconstruct it in UTC so comparisons with Date.now() are consistent.
+
+const EAT_OFFSET_MS = 3 * 60 * 60 * 1000; // UTC+3
 
 function getBookingMs(scheduledDate, scheduledTime) {
   const [h, m] = (scheduledTime || '08:00').split(':').map(Number);
-  const d = new Date(scheduledDate);
-  d.setHours(h, m, 0, 0);
-  return d.getTime();
+  // scheduledDate from Prisma is UTC midnight of the date (e.g. 2026-05-16T00:00:00Z)
+  const dayMs = new Date(scheduledDate).setUTCHours(0, 0, 0, 0);
+  const eatMs = dayMs + h * 3600000 + m * 60000; // time in EAT (HH:MM of that day in Nairobi)
+  return eatMs - EAT_OFFSET_MS; // convert to UTC
+}
+
+// ── In-memory deduplication: track bookings we've already reminded ─────────────
+// Key: `${bookingId}:${type}` (type = '24h' | '1h' | '30m')
+// Value: timestamp when reminder was sent
+// Entries expire after 2 hours so memory doesn't grow unbounded.
+
+const _sentCache = new Map();
+const CACHE_TTL_MS = 2 * 60 * 60 * 1000;
+
+function alreadySent(bookingId, type) {
+  const key = `${bookingId}:${type}`;
+  const sentAt = _sentCache.get(key);
+  if (!sentAt) return false;
+  if (Date.now() - sentAt > CACHE_TTL_MS) { _sentCache.delete(key); return false; }
+  return true;
+}
+
+function markSent(bookingId, type) {
+  _sentCache.set(`${bookingId}:${type}`, Date.now());
 }
 
 // ── Fetch ACCEPTED bookings whose actual time falls in [fromMin, toMin] ───────
@@ -249,27 +274,33 @@ function initReminders() {
     try {
       console.log('⏰ Running reminder check…');
 
-      // 24-hour window: 23h 25min → 24h 35min  (centre = 24h, ±35min)
-      const b24 = await getBookingsInWindow(23 * 60 + 25, 24 * 60 + 35);
+      // 24-hour window: 23h 52min → 24h 08min (16 min wide — fits within one 30-min cron tick)
+      const b24 = await getBookingsInWindow(23 * 60 + 52, 24 * 60 + 8);
       for (const b of b24) {
+        if (alreadySent(b.id, '24h')) continue;
         await sendCustomerReminder(b, 24);
         await sendProviderReminder(b, 24);
+        markSent(b.id, '24h');
       }
       if (b24.length) console.log(`⏰ 24h reminders sent for ${b24.length} booking(s)`);
 
       // 1-hour window: 55min → 65min
       const b1h = await getBookingsInWindow(55, 65);
       for (const b of b1h) {
+        if (alreadySent(b.id, '1h')) continue;
         await sendCustomerReminder(b, 1);
         await sendProviderReminder(b, 1);
+        markSent(b.id, '1h');
       }
       if (b1h.length) console.log(`⏰ 1h reminders sent for ${b1h.length} booking(s)`);
 
       // 30-minute window: 25min → 35min
       const b30 = await getBookingsInWindow(25, 35);
       for (const b of b30) {
+        if (alreadySent(b.id, '30m')) continue;
         await sendCustomerReminder(b, 0.5);
         await sendProviderReminder(b, 0.5);
+        markSent(b.id, '30m');
       }
       if (b30.length) console.log(`⏰ 30min reminders sent for ${b30.length} booking(s)`);
 

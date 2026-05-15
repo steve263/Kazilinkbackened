@@ -152,12 +152,13 @@ async function getTrending(req, res) {
   try {
     const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
+    // Overfetch 30 to account for unverified providers being filtered out
     const trending = await prisma.booking.groupBy({
       by: ['providerId'],
       where: { createdAt: { gte: weekAgo }, status: { not: 'CANCELLED' } },
       _count: { id: true },
       orderBy: { _count: { id: 'desc' } },
-      take: 10,
+      take: 30,
     });
 
     const providerIds = trending.map(t => t.providerId);
@@ -171,7 +172,8 @@ async function getTrending(req, res) {
         const provider = providers.find(p => p.id === t.providerId);
         return provider ? { provider, bookingsThisWeek: t._count.id } : null;
       })
-      .filter(Boolean);
+      .filter(Boolean)
+      .slice(0, 10);
 
     res.json({ success: true, data: result });
   } catch (err) {

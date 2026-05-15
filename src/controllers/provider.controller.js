@@ -471,21 +471,42 @@ async function getAvailableSlots(req, res) {
     let cur = sh * 60 + sm;
     const end = eh * 60 + em;
 
+    // Break window in minutes (optional)
+    let breakStart = null, breakEnd = null;
+    if (schedule.breakStart && schedule.breakEnd) {
+      const [bsh, bsm] = schedule.breakStart.split(':').map(Number);
+      const [beh, bem] = schedule.breakEnd.split(':').map(Number);
+      breakStart = bsh * 60 + bsm;
+      breakEnd   = beh * 60 + bem;
+    }
+
+    // Batch-fetch all booked slots for this day (avoids N+1 query per slot)
+    const dayStart = new Date(date); dayStart.setUTCHours(0,0,0,0);
+    const dayEnd   = new Date(date); dayEnd.setUTCHours(23,59,59,999);
+    const existingBookings = await prisma.booking.findMany({
+      where: {
+        providerId: provider.id,
+        scheduledDate: { gte: dayStart, lte: dayEnd },
+        status: { in: ['PENDING','ACCEPTED','EN_ROUTE','ARRIVED','IN_PROGRESS'] },
+      },
+      select: { scheduledTime: true },
+    });
+    // Accept both "14:00" (24-hour) and "2:00 PM" (legacy 12-hour) formats
+    const bookedSet = new Set(existingBookings.map(b => b.scheduledTime));
+
     while (cur + duration <= end) {
       const h = Math.floor(cur / 60), m = cur % 60;
+      // 24-hour format — canonical key stored in DB
       const timeStr = `${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}`;
-      const ampm = h >= 12 ? 'PM' : 'AM';
+      // 12-hour label for display
+      const ampm    = h >= 12 ? 'PM' : 'AM';
       const displayH = h % 12 || 12;
-      const displayTime = `${displayH}:${m.toString().padStart(2,'0')} ${ampm}`;
+      const label12  = `${displayH}:${m.toString().padStart(2,'0')} ${ampm}`;
 
-      const dayStart = new Date(date); dayStart.setHours(0,0,0,0);
-      const dayEnd   = new Date(date); dayEnd.setHours(23,59,59,999);
+      const inBreak = breakStart !== null && cur < breakEnd && cur + duration > breakStart;
+      const booked  = bookedSet.has(timeStr) || bookedSet.has(label12);
 
-      const existing = await prisma.booking.findFirst({
-        where: { providerId: provider.id, scheduledDate: { gte: dayStart, lte: dayEnd }, scheduledTime: displayTime, status: { in: ['PENDING','ACCEPTED','EN_ROUTE','ARRIVED','IN_PROGRESS'] } },
-      });
-
-      slots.push({ time: displayTime, timeStr, available: !existing });
+      slots.push({ time: timeStr, label: label12, available: !inBreak && !booked });
       cur += duration;
     }
 

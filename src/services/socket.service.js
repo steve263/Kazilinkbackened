@@ -16,6 +16,10 @@ function emitNewBooking(providerUserId, payload) {
   emitToUser(providerUserId, 'new_booking', payload);
 }
 
+function emitNewBookingRequest(providerUserId, payload) {
+  emitToUser(providerUserId, 'new_booking_request', payload);
+}
+
 function emitBookingCancelled(providerUserId, payload) {
   emitToUser(providerUserId, 'booking_cancelled', payload);
 }
@@ -45,6 +49,7 @@ function emitProviderArrived(customerUserId, payload) {
 module.exports = {
   emitToUser,
   emitNewBooking,
+  emitNewBookingRequest,
   emitBookingCancelled,
   emitPaymentReceived,
   emitBookingAccepted,

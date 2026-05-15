@@ -1,6 +1,7 @@
 const prisma = require('../config/db');
 const notificationSvc = require('../services/notification.service');
 const trustSvc = require('../services/trust.service');
+const socketSvc = require('../services/socket.service');
 
 const BOOKING_INCLUDE = {
   customer: { select: { id: true, name: true, phone: true, location: true } },
@@ -73,6 +74,20 @@ async function createBooking(req, res) {
     });
 
     console.log(`📋 New booking created: ${booking.id} — ${req.user.name} → ${provider.businessName} [PENDING — awaiting provider]`);
+
+    // Emit real-time popup to the provider
+    socketSvc.emitNewBookingRequest(provider.user.id, {
+      bookingId: booking.id,
+      customerName: req.user.name,
+      customerPhone: req.user.phone || '',
+      customerPhoto: req.user.profilePhoto || null,
+      service: booking.service?.name || null,
+      address: booking.address,
+      scheduledDate: booking.scheduledDate,
+      scheduledTime: booking.scheduledTime,
+      totalAmount: booking.totalAmount,
+      notes: booking.notes || null,
+    });
 
     if (isFundi) {
       notificationSvc.notifyNewBooking({
@@ -355,7 +370,6 @@ async function cancelBooking(req, res) {
       )
       .catch(console.error);
 
-    const socketSvc = require('../services/socket.service');
     socketSvc.emitBookingCancelled(booking.provider.user.id, { bookingId: booking.id });
 
     res.json({ success: true, data: updated });

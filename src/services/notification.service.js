@@ -65,6 +65,39 @@ function getBookingMessage(provider, status, scheduledTime) {
     .replace(/{time}/g, scheduledTime || '');
 }
 
+function getDateAwareAcceptedMessage(provider, booking, providerName) {
+  const scheduledDate = booking.scheduledDate;
+  const scheduledTime = booking.scheduledTime || '';
+  const name = providerName || provider?.businessName || 'Your provider';
+  const mobile = isMobileProvider(provider);
+
+  const now = new Date();
+  const bd = new Date(scheduledDate);
+  // Compare calendar days in EAT (UTC+3)
+  const nowEat = new Date(now.getTime() + 3 * 3600000);
+  const bdEat  = new Date(bd.getTime()  + 3 * 3600000);
+  const todayEatMid = Date.UTC(nowEat.getUTCFullYear(), nowEat.getUTCMonth(), nowEat.getUTCDate());
+  const bookEatMid  = Date.UTC(bdEat.getUTCFullYear(),  bdEat.getUTCMonth(),  bdEat.getUTCDate());
+  const daysUntil = Math.round((bookEatMid - todayEatMid) / 86400000);
+
+  if (daysUntil === 0) {
+    return mobile
+      ? `${name} accepted! They will arrive at your location at ${scheduledTime}`
+      : `Your booking at ${name} is confirmed for ${scheduledTime} today!`;
+  }
+  if (daysUntil === 1) {
+    return mobile
+      ? `${name} confirmed your booking for tomorrow at ${scheduledTime}`
+      : `Your booking at ${name} is confirmed for tomorrow at ${scheduledTime}!`;
+  }
+  const fmtDate = new Date(scheduledDate).toLocaleDateString('en-KE', {
+    weekday: 'long', month: 'long', day: 'numeric', timeZone: 'Africa/Nairobi',
+  });
+  return mobile
+    ? `${name} confirmed your booking for ${fmtDate} at ${scheduledTime}`
+    : `Your booking at ${name} is confirmed for ${fmtDate} at ${scheduledTime}!`;
+}
+
 function isMobileProvider(provider) {
   const category = (provider?.category || '').toUpperCase();
   if (MOBILE_CATEGORIES.includes(category)) return true;
@@ -186,11 +219,8 @@ async function notifyBookingAccepted({ booking, customerUser, providerName }) {
 
   const provider = booking.provider;
   const mobile = isMobileProvider(provider);
-  const message = getBookingMessage(provider, 'accepted', booking.scheduledTime);
   const title = mobile ? '✅ Provider Accepted!' : '✅ Booking Confirmed!';
-  const body = message || (mobile
-    ? `${providerName} accepted your booking and is on the way!`
-    : `Your booking at ${providerName} is confirmed for ${booking.scheduledTime || 'your scheduled time'}!`);
+  const body = getDateAwareAcceptedMessage(provider, booking, providerName);
 
   socketSvc.emitBookingAccepted(customerUser.id, { booking, providerName });
 

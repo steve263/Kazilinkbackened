@@ -214,7 +214,7 @@ function normalizePhone(raw) {
 
 async function login(req, res) {
   try {
-    const { phone, password } = req.body;
+    const { phone, password, rememberMe } = req.body;
 
     if (!phone || !password) {
       return res.status(400).json({ success: false, message: 'phone and password are required' });
@@ -244,8 +244,13 @@ async function login(req, res) {
       return res.status(401).json({ success: false, message: 'Invalid phone or password' });
     }
 
-    const token = generateToken(user);
-    console.log(`🔑 Logged in: ${user.name} (${user.role})`);
+    const expiresIn = rememberMe ? '30d' : '1d';
+    const token = jwt.sign(
+      { id: user.id, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn }
+    );
+    console.log(`🔑 Logged in: ${user.name} (${user.role}) — remember: ${!!rememberMe} — expires: ${expiresIn}`);
 
     res.json({ success: true, data: { user: sanitize(user), token } });
   } catch (err) {

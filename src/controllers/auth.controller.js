@@ -179,6 +179,13 @@ async function register(req, res) {
       }
     }
 
+    // Start free trial for non-FUNDI business providers
+    if (normalRole === 'PROVIDER' && category && category.toUpperCase() !== 'FUNDI' && user.provider) {
+      const subSvc = require('../services/subscription.service');
+      subSvc.createFreeTrial(user.provider.id).catch(console.error);
+      console.log(`🎁 Free trial started for ${businessName}`);
+    }
+
     const token = generateToken(user);
     console.log(`✅ Registered: ${user.name} (${user.role}) — ${user.phone}`);
 

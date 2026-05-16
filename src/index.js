@@ -73,6 +73,7 @@ app.use('/api/support',       require('./routes/support.routes'));
 app.use('/api/analytics',        require('./routes/analytics.routes'));
 app.use('/api/earnings',         require('./routes/earnings.routes'));
 app.use('/api/recommendations',  require('./routes/recommendations.routes'));
+app.use('/api/subscriptions',    require('./routes/subscription.routes'));
 
 // Review routes (convenience aliases at /api/reviews)
 const { auth: _auth, requireRole: _role } = require('./middleware/auth');

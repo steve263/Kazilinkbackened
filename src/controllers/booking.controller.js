@@ -33,6 +33,19 @@ async function createBooking(req, res) {
       return res.status(400).json({ success: false, message: 'This provider is not yet verified' });
     }
 
+    // Block bookings for business providers with expired subscriptions
+    if (provider.category !== 'FUNDI') {
+      const subSvc = require('../services/subscription.service');
+      const isActive = await subSvc.isSubscriptionActive(provider.id);
+      if (!isActive) {
+        return res.status(403).json({
+          success: false,
+          message: 'This business subscription has expired. They cannot receive bookings.',
+          code: 'SUBSCRIPTION_EXPIRED',
+        });
+      }
+    }
+
     if (provider.isBusy) {
       return res.status(400).json({
         success: false,

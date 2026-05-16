@@ -102,6 +102,7 @@ model Provider {
   payouts            Payout[]
   location           ProviderLocation?
   interactions       UserInteraction[]
+  subscription       Subscription?
 }
 
 model ProviderWaitlist {
@@ -791,4 +792,50 @@ model UserInteraction {
   createdAt  DateTime @default(now())
 
   @@unique([userId, providerId, type])
+}
+
+// ─── Subscription System ───────────────────────────────────────────────────────
+
+model Subscription {
+  id                 String             @id @default(cuid())
+  providerId         String             @unique
+  provider           Provider           @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  plan               SubscriptionPlan   @default(STARTER)
+  status             SubscriptionStatus @default(TRIAL)
+  trialStartDate     DateTime           @default(now())
+  trialEndDate       DateTime
+  currentPeriodStart DateTime?
+  currentPeriodEnd   DateTime?
+  amount             Float?
+  mpesaRef           String?
+  autoRenew          Boolean            @default(true)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  payments           SubscriptionPayment[]
+}
+
+model SubscriptionPayment {
+  id             String       @id @default(cuid())
+  subscriptionId String
+  subscription   Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  amount         Float
+  mpesaRef       String?
+  phone          String
+  status         String       @default("PENDING")
+  paidAt         DateTime?
+  createdAt      DateTime     @default(now())
+}
+
+enum SubscriptionPlan {
+  STARTER
+  GROWTH
+  PREMIUM
+}
+
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  EXPIRED
+  SUSPENDED
+  CANCELLED
 }

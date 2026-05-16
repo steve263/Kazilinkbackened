@@ -318,6 +318,17 @@ function initReminders() {
       console.error('❌ Daily summary cron error:', err.message);
     }
   }, { timezone: 'Africa/Nairobi' });
+
+  // ── Daily 9 AM: subscription expiry check ───────────────────────────────────
+  cron.schedule('0 9 * * *', async () => {
+    try {
+      console.log('💳 Running subscription expiry check…');
+      const subSvc = require('./subscription.service');
+      await subSvc.sendExpiryReminders();
+    } catch (err) {
+      console.error('❌ Subscription expiry cron error:', err.message);
+    }
+  }, { timezone: 'Africa/Nairobi' });
 }
 
 module.exports = { initReminders, sendCustomerReminder, sendProviderReminder };

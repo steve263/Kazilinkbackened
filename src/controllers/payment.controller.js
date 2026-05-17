@@ -192,4 +192,25 @@ async function getMyPayments(req, res) {
   }
 }
 
-module.exports = { stkPush, mpesaCallback, getPaymentStatus, getMyPayments };
+async function checkPaymentStatus(req, res) {
+  try {
+    const booking = await prisma.booking.findUnique({
+      where: { id: req.params.bookingId },
+      select: { id: true, paymentStatus: true, status: true, customerId: true },
+    });
+    if (!booking) {
+      return res.status(404).json({ success: false, message: 'Booking not found' });
+    }
+    if (booking.customerId !== req.user.id) {
+      return res.status(403).json({ success: false, message: 'Not authorized' });
+    }
+    res.json({
+      success: true,
+      data: { id: booking.id, paymentStatus: booking.paymentStatus, status: booking.status },
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+module.exports = { stkPush, mpesaCallback, getPaymentStatus, getMyPayments, checkPaymentStatus };

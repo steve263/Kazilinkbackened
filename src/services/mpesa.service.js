@@ -11,7 +11,7 @@ function getPassword(timestamp) {
   ).toString('base64');
 }
 
-async function stkPush({ phone, amount, bookingId, accountRef, description }) {
+async function stkPush({ phone, amount, bookingId, accountRef, description, callbackUrl }) {
   const token = await getAccessToken();
   const timestamp = getTimestamp();
   const password = getPassword(timestamp);
@@ -28,7 +28,7 @@ async function stkPush({ phone, amount, bookingId, accountRef, description }) {
     PartyA: normalizedPhone,
     PartyB: process.env.MPESA_SHORTCODE,
     PhoneNumber: normalizedPhone,
-    CallBackURL: process.env.MPESA_CALLBACK_URL,
+    CallBackURL: callbackUrl || process.env.MPESA_CALLBACK_URL,
     AccountReference: accountRef || bookingId,
     TransactionDesc: description || `KaziShow booking ${bookingId}`,
   };

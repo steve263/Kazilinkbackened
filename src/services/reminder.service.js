@@ -418,6 +418,60 @@ function initReminders() {
       console.error('❌ Auto-release cron error:', err.message);
     }
   }, { timezone: 'Africa/Nairobi' });
+
+  // ── Hourly: mark overdue commissions and block providers ─────────────────────
+  cron.schedule('0 * * * *', async () => {
+    try {
+      const now = new Date();
+
+      const overdue = await prisma.outstandingCommission.findMany({
+        where: { status: 'PENDING', dueAt: { lte: now } },
+        include: {
+          provider: {
+            include: { user: { select: { id: true, name: true, phone: true, deviceToken: true } } },
+          },
+        },
+      });
+
+      for (const commission of overdue) {
+        await prisma.outstandingCommission.update({
+          where: { id: commission.id },
+          data: { status: 'OVERDUE' },
+        });
+
+        await notifSvc.createNotification({
+          userId: commission.provider.userId,
+          type: 'SYSTEM',
+          title: '🚨 Commission Overdue — App Blocked!',
+          body: `Your KSh ${commission.amount} commission is overdue. Your app is now blocked until you pay. Open the app to pay now.`,
+          bookingId: commission.bookingId,
+        }).catch(console.error);
+
+        if (commission.provider.user.deviceToken) {
+          const firebaseSvc = require('./firebase.service');
+          firebaseSvc.sendPushNotification({
+            deviceToken: commission.provider.user.deviceToken,
+            title: '🚨 App Blocked — Pay Commission Now!',
+            body: `KSh ${commission.amount} commission overdue. Tap to pay and unlock your account immediately.`,
+            data: { url: '/provider/notifications', type: 'COMMISSION_OVERDUE' },
+          }).catch(console.error);
+        }
+
+        await smsSvc.sendSMS(
+          commission.provider.user.phone,
+          `KaziShow URGENT: Your KSh ${commission.amount} commission is overdue. Your app is now blocked. Pay now via the app to unlock your account immediately.`
+        ).catch(console.error);
+
+        console.log(`🚨 Commission overdue: KSh ${commission.amount} for ${commission.provider.businessName}`);
+      }
+
+      if (overdue.length > 0) {
+        console.log(`🚨 Marked ${overdue.length} commission(s) as overdue`);
+      }
+    } catch (err) {
+      console.error('❌ Commission overdue cron error:', err.message);
+    }
+  }, { timezone: 'Africa/Nairobi' });
 }
 
 module.exports = { initReminders, sendCustomerReminder, sendProviderReminder };

@@ -103,7 +103,8 @@ model Provider {
   payouts            Payout[]
   location           ProviderLocation?
   interactions       UserInteraction[]
-  subscription       Subscription?
+  subscription          Subscription?
+  outstandingCommissions OutstandingCommission[]
 }
 
 model ProviderWaitlist {
@@ -152,6 +153,8 @@ model Booking {
   customerConfirmedAt DateTime?
   paymentReleasedAt   DateTime?
   completedByProvider DateTime?
+  cashPaid            Boolean               @default(false)
+  cashPaidAt          DateTime?
   createdAt           DateTime              @default(now())
   updatedAt           DateTime              @updatedAt
   customer            User                  @relation("CustomerBookings", fields: [customerId], references: [id])
@@ -162,6 +165,7 @@ model Booking {
   payment             Payment?
   review              Review?
   cancellation        BookingCancellation?
+  outstandingCommission OutstandingCommission?
 }
 
 model Notification {
@@ -485,6 +489,7 @@ enum PaymentStatus {
   UNPAID
   PAID
   REFUNDED
+  CASH
 }
 
 enum PaymentTxStatus {
@@ -813,6 +818,34 @@ model BookingCancellation {
   refundStatus String   @default("PENDING")
   refundedAt   DateTime?
   createdAt    DateTime @default(now())
+}
+
+// ─── Cash Commission System ───────────────────────────────────────────────────
+
+model OutstandingCommission {
+  id            String           @id @default(cuid())
+  bookingId     String           @unique
+  booking       Booking          @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  providerId    String
+  provider      Provider         @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  amount        Float
+  status        CommissionStatus @default(PENDING)
+  mpesaRef      String?
+  checkoutRequestId String?
+  dueAt         DateTime
+  paidAt        DateTime?
+  waivedAt      DateTime?
+  waivedBy      String?
+  waiveReason   String?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+}
+
+enum CommissionStatus {
+  PENDING
+  PAID
+  OVERDUE
+  WAIVED
 }
 
 // ─── Subscription System ───────────────────────────────────────────────────────

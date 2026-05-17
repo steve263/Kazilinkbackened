@@ -884,6 +884,304 @@ async function completeReferralIfFirst(customerId, customerUser) {
   console.log(`💰 Referral reward paid: KSh 200 to ${referral.referrer.name}`);
 }
 
+// ── MARK CASH PAID (provider marks that customer paid cash) ────────────────────
+async function markCashPaid(req, res) {
+  try {
+    const bookingId = req.params.id;
+
+    const booking = await prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: BOOKING_INCLUDE,
+    });
+
+    if (!booking) return res.status(404).json({ success: false, message: 'Booking not found' });
+    if (booking.provider.userId !== req.user.id) {
+      return res.status(403).json({ success: false, message: 'Not authorized' });
+    }
+    if (!['IN_PROGRESS', 'COMPLETED'].includes(booking.status)) {
+      return res.status(400).json({ success: false, message: 'Can only mark cash paid for in-progress or completed bookings' });
+    }
+    if (booking.cashPaid) {
+      return res.status(400).json({ success: false, message: 'Cash already marked as paid for this booking' });
+    }
+    if (booking.paymentStatus === 'PAID') {
+      return res.status(400).json({ success: false, message: 'This booking was paid via M-Pesa, not cash' });
+    }
+
+    const commissionRate = parseFloat(process.env.COMMISSION_RATE) || 0.10;
+    const commissionAmount = Math.round(booking.totalAmount * commissionRate);
+    const dueAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+
+    await prisma.$transaction(async (tx) => {
+      await tx.booking.update({
+        where: { id: bookingId },
+        data: { cashPaid: true, cashPaidAt: new Date(), paymentStatus: 'CASH' },
+      });
+
+      await tx.outstandingCommission.create({
+        data: {
+          bookingId,
+          providerId: booking.providerId,
+          amount: commissionAmount,
+          dueAt,
+          status: 'PENDING',
+        },
+      });
+    });
+
+    // Notify provider of commission due
+    notificationSvc.createNotification({
+      userId: booking.provider.userId,
+      type: 'SYSTEM',
+      title: '💵 Cash Recorded — Commission Due',
+      body: `You received KSh ${booking.totalAmount} cash. Please pay KSh ${commissionAmount} commission to KaziShow within 24 hours to keep your account active.`,
+      bookingId,
+    }).catch(console.error);
+
+    console.log(`💵 Cash marked for booking ${bookingId} — Commission KSh ${commissionAmount} due`);
+
+    res.json({
+      success: true,
+      data: {
+        message: 'Cash payment recorded. Please pay your commission to KaziShow.',
+        commissionAmount,
+        dueAt,
+      },
+    });
+  } catch (err) {
+    console.error('❌ markCashPaid error:', err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+// ── PAY COMMISSION VIA M-PESA ──────────────────────────────────────────────────
+async function payCommission(req, res) {
+  try {
+    const commissionId = req.params.id;
+
+    const commission = await prisma.outstandingCommission.findUnique({
+      where: { id: commissionId },
+      include: { provider: { include: { user: true } } },
+    });
+
+    if (!commission) return res.status(404).json({ success: false, message: 'Commission not found' });
+    if (commission.provider.userId !== req.user.id) {
+      return res.status(403).json({ success: false, message: 'Not authorized' });
+    }
+    if (commission.status === 'PAID') {
+      return res.status(400).json({ success: false, message: 'Commission already paid' });
+    }
+    if (commission.status === 'WAIVED') {
+      return res.status(400).json({ success: false, message: 'Commission has been waived' });
+    }
+
+    const phone = commission.provider.user.phone;
+    if (!phone) {
+      return res.status(400).json({ success: false, message: 'Provider phone number not found' });
+    }
+
+    const mpesaSvc = require('../services/mpesa.service');
+    const stkResult = await mpesaSvc.stkPush({
+      phone,
+      amount: commission.amount,
+      bookingId: commission.bookingId,
+      accountRef: `COMM-${commissionId.slice(-6)}`,
+      description: 'KaziShow Commission Payment',
+      callbackUrl: `${process.env.BACKEND_URL}/api/bookings/commission-callback`,
+    });
+
+    await prisma.outstandingCommission.update({
+      where: { id: commissionId },
+      data: { checkoutRequestId: stkResult.CheckoutRequestID },
+    });
+
+    console.log(`💳 Commission STK Push sent to ${phone} for KSh ${commission.amount}`);
+
+    res.json({
+      success: true,
+      data: {
+        message: 'M-Pesa payment prompt sent to your phone',
+        checkoutRequestId: stkResult.CheckoutRequestID,
+      },
+    });
+  } catch (err) {
+    console.error('❌ payCommission error:', err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+// ── COMMISSION M-PESA CALLBACK ─────────────────────────────────────────────────
+async function commissionCallback(req, res) {
+  try {
+    const body = req.body?.Body?.stkCallback;
+    if (!body) return res.status(400).json({ success: false, message: 'Invalid callback' });
+
+    const { ResultCode, CheckoutRequestID } = body;
+
+    if (ResultCode !== 0) {
+      console.log(`❌ Commission payment failed: ${body.ResultDesc}`);
+      return res.json({ ResultCode: 0, ResultDesc: 'Accepted' });
+    }
+
+    const commission = await prisma.outstandingCommission.findFirst({
+      where: { checkoutRequestId: CheckoutRequestID },
+      include: { provider: { include: { user: true } } },
+    });
+
+    if (!commission) {
+      console.log(`⚠️ Commission not found for CheckoutRequestID: ${CheckoutRequestID}`);
+      return res.json({ ResultCode: 0, ResultDesc: 'Accepted' });
+    }
+
+    const items = body.CallbackMetadata?.Item || [];
+    const mpesaRef = items.find((i) => i.Name === 'MpesaReceiptNumber')?.Value;
+
+    await prisma.outstandingCommission.update({
+      where: { id: commission.id },
+      data: { status: 'PAID', paidAt: new Date(), mpesaRef: mpesaRef || null },
+    });
+
+    // Notify provider
+    notificationSvc.createNotification({
+      userId: commission.provider.userId,
+      type: 'PAYMENT_RECEIVED',
+      title: '✅ Commission Paid — Account Unlocked!',
+      body: `Your KSh ${commission.amount} commission has been received. Your account is fully active. Thank you!`,
+      bookingId: commission.bookingId,
+    }).catch(console.error);
+
+    if (commission.provider.user.deviceToken) {
+      const firebaseSvc = require('../services/firebase.service');
+      firebaseSvc.sendPushNotification({
+        deviceToken: commission.provider.user.deviceToken,
+        title: '✅ Commission Paid — App Unlocked!',
+        body: `KSh ${commission.amount} commission received. Your account is now fully active.`,
+        data: { url: '/provider/earnings', type: 'COMMISSION_PAID' },
+      }).catch(console.error);
+    }
+
+    const smsSvc = require('../services/sms.service');
+    smsSvc.sendSMS(
+      commission.provider.user.phone,
+      `KaziShow: Commission payment of KSh ${commission.amount} received (Ref: ${mpesaRef}). Your account is now fully active. Thank you!`
+    ).catch(console.error);
+
+    console.log(`✅ Commission paid: KSh ${commission.amount} from ${commission.provider.businessName}`);
+
+    res.json({ ResultCode: 0, ResultDesc: 'Accepted' });
+  } catch (err) {
+    console.error('❌ commissionCallback error:', err.message);
+    res.json({ ResultCode: 0, ResultDesc: 'Accepted' });
+  }
+}
+
+// ── GET OUTSTANDING COMMISSION (provider checks own) ──────────────────────────
+async function getOutstandingCommission(req, res) {
+  try {
+    const provider = await prisma.provider.findUnique({ where: { userId: req.user.id } });
+    if (!provider) return res.status(404).json({ success: false, message: 'Provider not found' });
+
+    const commissions = await prisma.outstandingCommission.findMany({
+      where: { providerId: provider.id, status: { in: ['PENDING', 'OVERDUE'] } },
+      include: { booking: { include: { service: { select: { name: true } } } } },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const total = commissions.reduce((sum, c) => sum + c.amount, 0);
+    const isBlocked = commissions.some((c) => c.status === 'OVERDUE');
+
+    res.json({
+      success: true,
+      data: { commissions, total, isBlocked },
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+// ── ADMIN: GET ALL COMMISSIONS ─────────────────────────────────────────────────
+async function getAllCommissions(req, res) {
+  try {
+    const { status, page = 1, limit = 50 } = req.query;
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    const where = {};
+    if (status) where.status = status.toUpperCase();
+
+    const [commissions, total, stats] = await Promise.all([
+      prisma.outstandingCommission.findMany({
+        where,
+        include: {
+          provider: { select: { businessName: true, user: { select: { name: true, phone: true } } } },
+          booking: { include: { service: { select: { name: true } } } },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: parseInt(limit),
+      }),
+      prisma.outstandingCommission.count({ where }),
+      prisma.outstandingCommission.groupBy({
+        by: ['status'],
+        _sum: { amount: true },
+        _count: true,
+      }),
+    ]);
+
+    res.json({
+      success: true,
+      data: { commissions, total, stats },
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+// ── ADMIN: WAIVE COMMISSION ────────────────────────────────────────────────────
+async function waiveCommission(req, res) {
+  try {
+    const { reason } = req.body;
+    const commissionId = req.params.id;
+
+    if (!reason) {
+      return res.status(400).json({ success: false, message: 'Waive reason is required' });
+    }
+
+    const commission = await prisma.outstandingCommission.findUnique({
+      where: { id: commissionId },
+      include: { provider: { include: { user: true } } },
+    });
+
+    if (!commission) return res.status(404).json({ success: false, message: 'Commission not found' });
+    if (['PAID', 'WAIVED'].includes(commission.status)) {
+      return res.status(400).json({ success: false, message: `Commission is already ${commission.status.toLowerCase()}` });
+    }
+
+    await prisma.outstandingCommission.update({
+      where: { id: commissionId },
+      data: {
+        status: 'WAIVED',
+        waivedAt: new Date(),
+        waivedBy: req.user.id,
+        waiveReason: reason,
+      },
+    });
+
+    notificationSvc.createNotification({
+      userId: commission.provider.userId,
+      type: 'SYSTEM',
+      title: '✅ Commission Waived',
+      body: `Your KSh ${commission.amount} commission has been waived by KaziShow admin. Your account is now fully active.`,
+      bookingId: commission.bookingId,
+    }).catch(console.error);
+
+    console.log(`✅ Commission waived: KSh ${commission.amount} for ${commission.provider.businessName}`);
+
+    res.json({ success: true, data: { message: 'Commission waived successfully' } });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
 module.exports = {
   createBooking,
   getBookings,
@@ -898,4 +1196,10 @@ module.exports = {
   getTracking,
   updateProviderLocation,
   notifyWaitlist,
+  markCashPaid,
+  payCommission,
+  commissionCallback,
+  getOutstandingCommission,
+  getAllCommissions,
+  waiveCommission,
 };

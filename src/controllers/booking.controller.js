@@ -332,6 +332,19 @@ async function updateStatus(req, res) {
       const isPayAfter = paymentMethod === 'PAY_AFTER';
 
       if (isEscrow) {
+        // Emit real-time popup to customer instantly
+        const commissionRate = parseFloat(process.env.COMMISSION_RATE) || 0.10;
+        socketSvc.emitJobCompletionRequest(booking.customerId, {
+          bookingId: booking.id,
+          providerName: booking.provider.businessName,
+          providerPhoto: booking.provider.profileImage || null,
+          serviceName: booking.service?.name || 'Service',
+          amount: booking.totalAmount,
+          providerAmount: Math.round(booking.totalAmount * (1 - commissionRate)),
+          message: `${booking.provider.businessName} says the job is complete!`,
+        });
+        console.log(`📨 Job completion popup sent to customer ${booking.customerId}`);
+
         // Money in escrow — ask customer to confirm release
         notificationSvc.createNotification({
           userId: booking.customerId,
@@ -459,7 +472,7 @@ async function cancelBooking(req, res) {
     if (!isCustomer && !isProvider) {
       return res.status(403).json({ success: false, message: 'Not authorized to cancel this booking' });
     }
-    if (['COMPLETED', 'CANCELLED'].includes(booking.status)) {
+    if (['COMPLETED', 'CANCELLED', 'DISPUTED'].includes(booking.status)) {
       return res.status(400).json({
         success: false,
         message: `Cannot cancel a booking that is already ${booking.status.toLowerCase()}`,
@@ -1245,6 +1258,110 @@ async function waiveCommission(req, res) {
   }
 }
 
+// ── CUSTOMER DISPUTES JOB ─────────────────────────────────────────────────────
+async function disputeJob(req, res) {
+  try {
+    const { reason } = req.body;
+    const bookingId = req.params.id;
+
+    if (!reason || reason.trim().length < 10) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide a detailed reason (at least 10 characters)',
+      });
+    }
+
+    const booking = await prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: {
+        customer: true,
+        provider: { include: { user: true } },
+        service: true,
+      },
+    });
+
+    if (!booking) return res.status(404).json({ success: false, message: 'Booking not found' });
+    if (booking.customerId !== req.user.id) {
+      return res.status(403).json({ success: false, message: 'Only the customer can dispute this job' });
+    }
+    if (booking.status !== 'COMPLETED') {
+      return res.status(400).json({ success: false, message: 'Can only dispute completed bookings' });
+    }
+    if (booking.customerConfirmed) {
+      return res.status(400).json({ success: false, message: 'Cannot dispute a job you already confirmed' });
+    }
+
+    await prisma.booking.update({
+      where: { id: bookingId },
+      data: { status: 'DISPUTED' },
+    });
+
+    // Create report record (using correct field names)
+    await prisma.report.create({
+      data: {
+        reporterId: req.user.id,
+        reportedId: booking.provider.userId,
+        type: 'OTHER',
+        description: `JOB_DISPUTE: ${reason}`,
+        bookingId,
+      },
+    }).catch(() => console.log('Could not create report record'));
+
+    const smsSvc = require('../services/sms.service');
+    const firebaseSvc = require('../services/firebase.service');
+
+    // Notify all admins immediately
+    const admins = await prisma.user.findMany({ where: { role: 'ADMIN' } });
+    for (const admin of admins) {
+      notificationSvc.createNotification({
+        userId: admin.id,
+        type: 'SYSTEM',
+        title: '🚨 Job Dispute — Action Required!',
+        body: `${booking.customer.name} disputed job by ${booking.provider.businessName}. Service: ${booking.service?.name}. Amount: KSh ${booking.totalAmount}. Reason: ${reason}`,
+        bookingId,
+      }).catch(console.error);
+
+      if (admin.deviceToken) {
+        firebaseSvc.sendPushNotification({
+          deviceToken: admin.deviceToken,
+          title: '🚨 Job Dispute Needs Review!',
+          body: `${booking.customer.name} vs ${booking.provider.businessName} — KSh ${booking.totalAmount}`,
+          data: { url: '/admin', bookingId, type: 'DISPUTE' },
+        }).catch(console.error);
+      }
+    }
+
+    // Notify provider
+    notificationSvc.createNotification({
+      userId: booking.provider.userId,
+      type: 'SYSTEM',
+      title: '⚠️ Customer Disputed Your Job',
+      body: `${booking.customer.name} disputed the job completion. Reason: ${reason}. KaziShow admin will review and resolve this.`,
+      bookingId,
+    }).catch(console.error);
+
+    smsSvc.sendSMS(
+      booking.provider.user.phone,
+      `KaziShow: ${booking.customer.name} disputed job completion. Reason: ${reason}. Admin will review. Payment held until resolved.`
+    ).catch(console.error);
+
+    smsSvc.sendSMS(
+      booking.customer.phone,
+      `KaziShow: Your dispute has been submitted. Admin will review and resolve within 24 hours. Payment of KSh ${booking.totalAmount} is held safely.`
+    ).catch(console.error);
+
+    console.log(`🚨 Job dispute created: ${bookingId} by ${booking.customer.name}`);
+
+    res.json({
+      success: true,
+      data: { message: 'Dispute submitted. Admin will review within 24 hours. Payment is held safely.' },
+    });
+  } catch (err) {
+    console.error('❌ disputeJob error:', err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
 module.exports = {
   createBooking,
   getBookings,
@@ -1265,4 +1382,5 @@ module.exports = {
   getOutstandingCommission,
   getAllCommissions,
   waiveCommission,
+  disputeJob,
 };

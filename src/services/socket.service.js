@@ -46,6 +46,10 @@ function emitProviderArrived(customerUserId, payload) {
   emitToUser(customerUserId, 'provider_arrived', payload);
 }
 
+function emitJobCompletionRequest(customerUserId, payload) {
+  emitToUser(customerUserId, 'job_completion_request', payload);
+}
+
 module.exports = {
   emitToUser,
   emitNewBooking,
@@ -56,4 +60,5 @@ module.exports = {
   emitBookingDeclined,
   emitProviderEnRoute,
   emitProviderArrived,
+  emitJobCompletionRequest,
 };

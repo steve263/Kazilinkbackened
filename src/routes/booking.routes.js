@@ -18,6 +18,7 @@ const {
   getOutstandingCommission,
   getAllCommissions,
   waiveCommission,
+  disputeJob,
 } = require('../controllers/booking.controller');
 const { auth, requireRole } = require('../middleware/auth');
 
@@ -38,6 +39,7 @@ router.put('/:id/decline', auth, requireRole('PROVIDER'), declineBooking);
 router.put('/:id/status', auth, requireRole('PROVIDER'), updateStatus);
 router.post('/:id/cancel', auth, cancelBooking);
 router.put('/:id/confirm-complete', auth, requireRole('CUSTOMER'), confirmJobComplete);
+router.post('/:id/dispute', auth, requireRole('CUSTOMER'), disputeJob);
 router.post('/:id/mark-cash-paid', auth, requireRole('PROVIDER'), markCashPaid);
 router.post('/commissions/:id/pay', auth, requireRole('PROVIDER'), payCommission);
 router.put('/commissions/:id/waive', auth, requireRole('ADMIN'), waiveCommission);

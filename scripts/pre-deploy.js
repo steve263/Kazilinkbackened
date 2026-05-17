@@ -4,12 +4,12 @@ const { execSync } = require('child_process');
 async function main() {
   console.log('[pre-deploy] ===== KaziShow pre-deploy script starting =====');
 
-  console.log('[pre-deploy] Running prisma migrate deploy...');
+  console.log('[pre-deploy] Running prisma db push...');
   try {
-    execSync('npx prisma migrate deploy', { stdio: 'inherit' });
-    console.log('[pre-deploy] All migrations applied successfully.');
+    execSync('npx prisma db push --accept-data-loss', { stdio: 'inherit' });
+    console.log('[pre-deploy] Schema pushed successfully.');
   } catch (err) {
-    console.error('[pre-deploy] migrate deploy failed:', err.message);
+    console.error('[pre-deploy] db push failed:', err.message);
     process.exit(1);
   }
 

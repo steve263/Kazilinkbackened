@@ -323,32 +323,95 @@ async function updateStatus(req, res) {
       }).catch(console.error);
     }
 
-    // ── On COMPLETED: notify customer to confirm + free provider + waitlist + trust ─
+    // ── On COMPLETED: notify based on payment method ───────────────────────────
     if (status.toUpperCase() === 'COMPLETED') {
-      // Notify customer to confirm job completion and release payment
-      notificationSvc.createNotification({
-        userId: booking.customerId,
-        type: 'BOOKING_COMPLETED',
-        title: '✅ Job Complete — Please Confirm!',
-        body: `${booking.provider.businessName} says the job is done! Confirm to release their payment of KSh ${booking.totalAmount}. Payment auto-releases in 24 hours.`,
-        bookingId: booking.id,
-      }).catch(console.error);
-
-      if (booking.customer.deviceToken) {
-        const firebaseSvc = require('../services/firebase.service');
-        firebaseSvc.sendPushNotification({
-          deviceToken: booking.customer.deviceToken,
-          title: '✅ Job Done — Confirm Payment!',
-          body: `${booking.provider.businessName} completed the job. Tap to confirm and release payment.`,
-          data: { url: '/profile', bookingId: booking.id, type: 'CONFIRM_COMPLETE' },
-        }).catch(console.error);
-      }
-
       const smsSvc = require('../services/sms.service');
-      smsSvc.sendSMS(
-        booking.customer.phone,
-        `KaziShow: ${booking.provider.businessName} says the job is done! Open the app to confirm and release their payment of KSh ${booking.totalAmount}. Payment auto-releases in 24 hours if not confirmed.`
-      ).catch(console.error);
+      const paymentMethod = booking.paymentMethod || 'MPESA';
+      const isEscrow = paymentMethod === 'MPESA' && booking.paymentStatus === 'PAID';
+      const isCash = paymentMethod === 'CASH';
+      const isPayAfter = paymentMethod === 'PAY_AFTER';
+
+      if (isEscrow) {
+        // Money in escrow — ask customer to confirm release
+        notificationSvc.createNotification({
+          userId: booking.customerId,
+          type: 'BOOKING_COMPLETED',
+          title: '✅ Job Complete — Please Confirm!',
+          body: `${booking.provider.businessName} says the job is done! Confirm to release KSh ${booking.totalAmount} payment. Auto-releases in 24 hours.`,
+          bookingId: booking.id,
+        }).catch(console.error);
+
+        if (booking.customer.deviceToken) {
+          const firebaseSvc = require('../services/firebase.service');
+          firebaseSvc.sendPushNotification({
+            deviceToken: booking.customer.deviceToken,
+            title: '✅ Job Done — Confirm Payment!',
+            body: `${booking.provider.businessName} completed the job. Tap to confirm and release payment.`,
+            data: { url: '/profile', bookingId: booking.id, type: 'CONFIRM_COMPLETE' },
+          }).catch(console.error);
+        }
+
+        smsSvc.sendSMS(
+          booking.customer.phone,
+          `KaziShow: ${booking.provider.businessName} completed the job! Open the app to confirm and release KSh ${booking.totalAmount}. Auto-releases in 24 hours.`
+        ).catch(console.error);
+
+      } else if (isCash) {
+        // Cash payment — remind provider to collect, remind customer to pay
+        notificationSvc.createNotification({
+          userId: booking.provider.userId,
+          type: 'SYSTEM',
+          title: '💵 Collect Cash from Customer',
+          body: `Job complete! Collect KSh ${booking.totalAmount} cash from ${booking.customer.name}. Then tap "Cash Received" to record it.`,
+          bookingId: booking.id,
+        }).catch(console.error);
+
+        smsSvc.sendSMS(
+          booking.provider.user.phone,
+          `KaziShow: Job done! Collect KSh ${booking.totalAmount} cash from ${booking.customer.name} (${booking.customer.phone}).`
+        ).catch(console.error);
+
+        notificationSvc.createNotification({
+          userId: booking.customerId,
+          type: 'SYSTEM',
+          title: '💵 Please Pay the Provider',
+          body: `${booking.provider.businessName} completed your job. Pay KSh ${booking.totalAmount} cash directly to the provider.`,
+          bookingId: booking.id,
+        }).catch(console.error);
+
+        smsSvc.sendSMS(
+          booking.customer.phone,
+          `KaziShow: ${booking.provider.businessName} completed the job. Please pay KSh ${booking.totalAmount} cash to the provider.`
+        ).catch(console.error);
+
+      } else if (isPayAfter) {
+        // Pay after — remind provider to collect, remind customer payment is due
+        notificationSvc.createNotification({
+          userId: booking.provider.userId,
+          type: 'SYSTEM',
+          title: '⏰ Collect Payment from Customer',
+          body: `Job complete! Remind ${booking.customer.name} to pay KSh ${booking.totalAmount}. Payment is due now. Their number: ${booking.customer.phone}`,
+          bookingId: booking.id,
+        }).catch(console.error);
+
+        smsSvc.sendSMS(
+          booking.provider.user.phone,
+          `KaziShow: Job done! Remind ${booking.customer.name} to pay KSh ${booking.totalAmount}. Contact: ${booking.customer.phone}`
+        ).catch(console.error);
+
+        notificationSvc.createNotification({
+          userId: booking.customerId,
+          type: 'SYSTEM',
+          title: '💳 Payment Due Now!',
+          body: `${booking.provider.businessName} completed your job. Please pay KSh ${booking.totalAmount} as agreed. M-Pesa: ${booking.provider.user.phone}`,
+          bookingId: booking.id,
+        }).catch(console.error);
+
+        smsSvc.sendSMS(
+          booking.customer.phone,
+          `KaziShow: ${booking.provider.businessName} completed your job. Please pay KSh ${booking.totalAmount} as agreed. M-Pesa: ${booking.provider.user.phone}`
+        ).catch(console.error);
+      }
 
       await prisma.provider.update({
         where: { id: booking.providerId },

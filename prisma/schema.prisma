@@ -153,6 +153,7 @@ model Booking {
   customerConfirmedAt DateTime?
   paymentReleasedAt   DateTime?
   completedByProvider DateTime?
+  paymentMethod       PaymentMethod         @default(MPESA)
   cashPaid            Boolean               @default(false)
   cashPaidAt          DateTime?
   createdAt           DateTime              @default(now())
@@ -490,6 +491,12 @@ enum PaymentStatus {
   PAID
   REFUNDED
   CASH
+}
+
+enum PaymentMethod {
+  MPESA
+  CASH
+  PAY_AFTER
 }
 
 enum PaymentTxStatus {

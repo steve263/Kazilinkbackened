@@ -329,6 +329,95 @@ function initReminders() {
       console.error('❌ Subscription expiry cron error:', err.message);
     }
   }, { timezone: 'Africa/Nairobi' });
+
+  // ── Hourly: auto-release payments not confirmed within 24 hours ──────────────
+  cron.schedule('0 * * * *', async () => {
+    try {
+      const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+      const unconfirmed = await prisma.booking.findMany({
+        where: {
+          status: 'COMPLETED',
+          customerConfirmed: false,
+          completedByProvider: { lte: oneDayAgo },
+          paymentReleasedAt: null,
+        },
+        include: {
+          customer: { select: { id: true, name: true, phone: true, deviceToken: true } },
+          provider: {
+            include: {
+              user: { select: { id: true, name: true, phone: true, deviceToken: true } },
+            },
+          },
+          service: { select: { name: true } },
+          payment: true,
+        },
+      });
+
+      for (const booking of unconfirmed) {
+        console.log(`⏰ Auto-releasing payment for booking ${booking.id}`);
+
+        await prisma.booking.update({
+          where: { id: booking.id },
+          data: { customerConfirmed: true, customerConfirmedAt: new Date() },
+        });
+
+        // Inline release logic to avoid circular imports
+        const commissionRate = parseFloat(process.env.COMMISSION_RATE) || 0.10;
+        const commission = Math.round(booking.totalAmount * commissionRate);
+        const providerAmount = booking.totalAmount - commission;
+
+        if (booking.payment) {
+          await prisma.payment.update({
+            where: { bookingId: booking.id },
+            data: { providerAmount, commission },
+          }).catch(console.error);
+        }
+
+        await prisma.provider.update({
+          where: { id: booking.providerId },
+          data: {
+            walletBalance: { increment: providerAmount },
+            totalEarned: { increment: providerAmount },
+          },
+        });
+
+        await prisma.booking.update({
+          where: { id: booking.id },
+          data: { paymentReleasedAt: new Date() },
+        });
+
+        // Notify provider
+        await notifSvc.createNotification({
+          userId: booking.provider.userId,
+          type: 'PAYMENT_RECEIVED',
+          title: '💰 Payment Auto-Released!',
+          body: `KSh ${providerAmount} has been released to your earnings for ${booking.service?.name || 'Service'}. The customer did not respond within 24 hours.`,
+          bookingId: booking.id,
+        }).catch(console.error);
+
+        await smsSvc.sendSMS(
+          booking.provider.user.phone,
+          `KaziShow: KSh ${providerAmount} auto-released to your earnings for ${booking.service?.name || 'Service'} (${booking.customer.name}). Customer did not confirm within 24 hours.`
+        ).catch(console.error);
+
+        // Notify customer
+        await notifSvc.createNotification({
+          userId: booking.customer.id,
+          type: 'SYSTEM',
+          title: '⏰ Payment Auto-Released',
+          body: `Payment of KSh ${booking.totalAmount} was automatically released to ${booking.provider.businessName} after 24 hours. Please rate your experience.`,
+          bookingId: booking.id,
+        }).catch(console.error);
+      }
+
+      if (unconfirmed.length > 0) {
+        console.log(`⏰ Auto-released ${unconfirmed.length} payment(s)`);
+      }
+    } catch (err) {
+      console.error('❌ Auto-release cron error:', err.message);
+    }
+  }, { timezone: 'Africa/Nairobi' });
 }
 
 module.exports = { initReminders, sendCustomerReminder, sendProviderReminder };

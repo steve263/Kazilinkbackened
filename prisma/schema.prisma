@@ -53,6 +53,7 @@ model User {
   verificationRequests VerificationRequest[]
   suspensionAppeals    SuspensionAppeal[]
   interactions         UserInteraction[]
+  bookingCancellations BookingCancellation[]
 }
 
 model Provider {
@@ -133,29 +134,34 @@ model Service {
 }
 
 model Booking {
-  id            String         @id @default(cuid())
-  customerId    String
-  providerId    String
-  serviceId     String?
-  status        BookingStatus  @default(PENDING)
-  scheduledDate DateTime
-  scheduledTime String
-  address       String
-  lat           Float?
-  lng           Float?
-  totalAmount   Int
-  paymentStatus PaymentStatus  @default(UNPAID)
-  mpesaRef      String?
-  notes         String?
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  customer      User           @relation("CustomerBookings", fields: [customerId], references: [id])
-  provider      Provider       @relation("ProviderBookings", fields: [providerId], references: [id])
-  service       Service?       @relation(fields: [serviceId], references: [id])
-  messages      Message[]
-  notifications Notification[]
-  payment       Payment?
-  review        Review?
+  id                  String                @id @default(cuid())
+  customerId          String
+  providerId          String
+  serviceId           String?
+  status              BookingStatus         @default(PENDING)
+  scheduledDate       DateTime
+  scheduledTime       String
+  address             String
+  lat                 Float?
+  lng                 Float?
+  totalAmount         Int
+  paymentStatus       PaymentStatus         @default(UNPAID)
+  mpesaRef            String?
+  notes               String?
+  customerConfirmed   Boolean               @default(false)
+  customerConfirmedAt DateTime?
+  paymentReleasedAt   DateTime?
+  completedByProvider DateTime?
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+  customer            User                  @relation("CustomerBookings", fields: [customerId], references: [id])
+  provider            Provider              @relation("ProviderBookings", fields: [providerId], references: [id])
+  service             Service?              @relation(fields: [serviceId], references: [id])
+  messages            Message[]
+  notifications       Notification[]
+  payment             Payment?
+  review              Review?
+  cancellation        BookingCancellation?
 }
 
 model Notification {
@@ -792,6 +798,21 @@ model UserInteraction {
   createdAt  DateTime @default(now())
 
   @@unique([userId, providerId, type])
+}
+
+// ─── Booking Cancellation ─────────────────────────────────────────────────────
+
+model BookingCancellation {
+  id           String   @id @default(cuid())
+  bookingId    String   @unique
+  booking      Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  cancelledBy  String
+  user         User     @relation(fields: [cancelledBy], references: [id])
+  reason       String
+  refundAmount Float    @default(0)
+  refundStatus String   @default("PENDING")
+  refundedAt   DateTime?
+  createdAt    DateTime @default(now())
 }
 
 // ─── Subscription System ───────────────────────────────────────────────────────

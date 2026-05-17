@@ -207,11 +207,40 @@ function initSocket(httpServer) {
     });
 
     socket.on('video_call_ended', (data) => {
-      if (data.to) io.to(data.to).emit('video_call_ended', {});
+      if (data.to) {
+        console.log(`📵 Video call ended → ${data.to}`);
+        io.to(data.to).emit('video_call_ended', { from: socket.userId || data.from });
+      }
     });
 
     socket.on('video_call_rejected', (data) => {
-      if (data.to) io.to(data.to).emit('video_call_rejected', {});
+      if (data.to) {
+        console.log(`❌ Video call rejected → ${data.to}`);
+        io.to(data.to).emit('video_call_rejected', { from: socket.userId || data.from });
+      }
+    });
+
+    socket.on('video_call_missed', (data) => {
+      if (data.to) io.to(data.to).emit('video_call_missed', {});
+    });
+
+    // Audio-call aliases (cleaner event names alongside legacy end_call/decline_call)
+    socket.on('audio_call_ended', (data) => {
+      if (data.to) {
+        console.log(`📵 Audio call ended → ${data.to}`);
+        io.to(data.to).emit('audio_call_ended', { from: socket.userId || data.from });
+      }
+    });
+
+    socket.on('audio_call_rejected', (data) => {
+      if (data.to) {
+        console.log(`❌ Audio call rejected → ${data.to}`);
+        io.to(data.to).emit('audio_call_rejected', { from: socket.userId || data.from });
+      }
+    });
+
+    socket.on('audio_call_missed', (data) => {
+      if (data.to) io.to(data.to).emit('audio_call_missed', {});
     });
 
     // ─── Disconnect ───────────────────────────────────────────────────────────

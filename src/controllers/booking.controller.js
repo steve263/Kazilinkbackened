@@ -4,13 +4,14 @@ const trustSvc = require('../services/trust.service');
 const socketSvc = require('../services/socket.service');
 
 const BOOKING_INCLUDE = {
-  customer: { select: { id: true, name: true, phone: true, location: true } },
+  customer: { select: { id: true, name: true, phone: true, location: true, deviceToken: true } },
   provider: {
-    include: { user: { select: { id: true, name: true, phone: true, isOnline: true } } },
+    include: { user: { select: { id: true, name: true, phone: true, isOnline: true, deviceToken: true } } },
   },
   service: true,
   payment: true,
   review: true,
+  cancellation: true,
 };
 
 async function createBooking(req, res) {
@@ -291,9 +292,14 @@ async function updateStatus(req, res) {
       return res.status(400).json({ success: false, message: `status must be one of: ${VALID.join(', ')}` });
     }
 
+    const updateData = { status: status.toUpperCase() };
+    if (status.toUpperCase() === 'COMPLETED') {
+      updateData.completedByProvider = new Date();
+    }
+
     const updated = await prisma.booking.update({
       where: { id: req.params.id },
-      data: { status: status.toUpperCase() },
+      data: updateData,
       include: BOOKING_INCLUDE,
     });
 
@@ -317,8 +323,33 @@ async function updateStatus(req, res) {
       }).catch(console.error);
     }
 
-    // ── On COMPLETED: free provider + notify waitlist + referral check + trust ─
+    // ── On COMPLETED: notify customer to confirm + free provider + waitlist + trust ─
     if (status.toUpperCase() === 'COMPLETED') {
+      // Notify customer to confirm job completion and release payment
+      notificationSvc.createNotification({
+        userId: booking.customerId,
+        type: 'BOOKING_COMPLETED',
+        title: '✅ Job Complete — Please Confirm!',
+        body: `${booking.provider.businessName} says the job is done! Confirm to release their payment of KSh ${booking.totalAmount}. Payment auto-releases in 24 hours.`,
+        bookingId: booking.id,
+      }).catch(console.error);
+
+      if (booking.customer.deviceToken) {
+        const firebaseSvc = require('../services/firebase.service');
+        firebaseSvc.sendPushNotification({
+          deviceToken: booking.customer.deviceToken,
+          title: '✅ Job Done — Confirm Payment!',
+          body: `${booking.provider.businessName} completed the job. Tap to confirm and release payment.`,
+          data: { url: '/profile', bookingId: booking.id, type: 'CONFIRM_COMPLETE' },
+        }).catch(console.error);
+      }
+
+      const smsSvc = require('../services/sms.service');
+      smsSvc.sendSMS(
+        booking.customer.phone,
+        `KaziShow: ${booking.provider.businessName} says the job is done! Open the app to confirm and release their payment of KSh ${booking.totalAmount}. Payment auto-releases in 24 hours if not confirmed.`
+      ).catch(console.error);
+
       await prisma.provider.update({
         where: { id: booking.providerId },
         data: { isBusy: false, busySince: null },
@@ -340,30 +371,80 @@ async function updateStatus(req, res) {
 
 async function cancelBooking(req, res) {
   try {
+    const { reason } = req.body;
+    const bookingId = req.params.id;
+
+    if (!reason) {
+      return res.status(400).json({ success: false, message: 'Please provide a reason for cancellation' });
+    }
+
     const booking = await prisma.booking.findUnique({
-      where: { id: req.params.id },
-      include: { provider: { include: { user: true } } },
+      where: { id: bookingId },
+      include: {
+        customer: true,
+        provider: { include: { user: true } },
+        service: true,
+        payment: true,
+      },
     });
 
     if (!booking) return res.status(404).json({ success: false, message: 'Booking not found' });
-    if (booking.customerId !== req.user.id) {
-      return res.status(403).json({ success: false, message: 'Not authorized' });
+
+    const isCustomer = booking.customerId === req.user.id;
+    const isProvider = booking.provider.userId === req.user.id;
+
+    if (!isCustomer && !isProvider) {
+      return res.status(403).json({ success: false, message: 'Not authorized to cancel this booking' });
     }
     if (['COMPLETED', 'CANCELLED'].includes(booking.status)) {
-      return res.status(400).json({ success: false, message: 'This booking cannot be cancelled' });
+      return res.status(400).json({
+        success: false,
+        message: `Cannot cancel a booking that is already ${booking.status.toLowerCase()}`,
+      });
     }
 
-    const updated = await prisma.booking.update({
-      where: { id: req.params.id },
-      data: { status: 'CANCELLED' },
-      include: BOOKING_INCLUDE,
+    // Calculate refund amount
+    const now = new Date();
+    const scheduledTime = new Date(booking.scheduledDate);
+    const hoursUntilBooking = (scheduledTime - now) / (1000 * 60 * 60);
+    const isPaid = booking.paymentStatus === 'PAID' || booking.payment?.status === 'SUCCESS';
+
+    let refundAmount = 0;
+    let refundMessage = '';
+
+    if (isPaid) {
+      if (isCustomer) {
+        if (hoursUntilBooking >= 2) {
+          refundAmount = booking.totalAmount;
+          refundMessage = `Full refund of KSh ${refundAmount} will be sent to your M-Pesa within 24 hours`;
+        } else if (hoursUntilBooking > 0) {
+          refundAmount = Math.round(booking.totalAmount * 0.5);
+          refundMessage = `50% refund of KSh ${refundAmount} will be sent to your M-Pesa (cancelled less than 2 hours before booking)`;
+        } else {
+          refundMessage = 'No refund — booking time has already passed';
+        }
+      } else {
+        // Provider cancels — full refund always
+        refundAmount = booking.totalAmount;
+        refundMessage = `Full refund of KSh ${refundAmount} will be sent to customer M-Pesa within 24 hours`;
+      }
+    } else {
+      refundMessage = 'No payment was made for this booking';
+    }
+
+    await prisma.booking.update({ where: { id: bookingId }, data: { status: 'CANCELLED' } });
+
+    await prisma.bookingCancellation.create({
+      data: {
+        bookingId,
+        cancelledBy: req.user.id,
+        reason,
+        refundAmount,
+        refundStatus: refundAmount > 0 ? 'PENDING' : 'NOT_APPLICABLE',
+      },
     });
 
-    console.log(`🚫 Booking cancelled: ${booking.id}`);
-    trustSvc.updateTrustScore(req.user.id, 'cancelledJob').catch(console.error);
-    trustSvc.detectFraud(req.user.id).catch(console.error);
-
-    // If booking was active, free the provider
+    // Free provider if was active
     if (['ACCEPTED', 'EN_ROUTE', 'ARRIVED', 'IN_PROGRESS', 'PREPARING', 'READY'].includes(booking.status)) {
       await prisma.provider.update({
         where: { id: booking.providerId },
@@ -372,22 +453,211 @@ async function cancelBooking(req, res) {
       notifyWaitlist(booking.providerId, booking.provider.businessName).catch(console.error);
     }
 
-    // Cancel the auto-decline timer if still pending
     notificationSvc.cancelDeclineTimer(booking.id);
+    socketSvc.emitBookingCancelled(booking.provider.user.id, { bookingId: booking.id });
+    trustSvc.updateTrustScore(req.user.id, 'cancelledJob').catch(console.error);
+    trustSvc.detectFraud(req.user.id).catch(console.error);
 
     const smsSvc = require('../services/sms.service');
-    smsSvc
-      .sendSMS(
+
+    if (isCustomer) {
+      // Notify provider
+      notificationSvc.createNotification({
+        userId: booking.provider.userId,
+        type: 'SYSTEM',
+        title: '❌ Booking Cancelled',
+        body: `${booking.customer.name} cancelled the booking for ${booking.service?.name || 'Service'}. Reason: ${reason}`,
+        bookingId,
+      }).catch(console.error);
+      smsSvc.sendSMS(
         booking.provider.user.phone,
-        smsSvc.tplBookingCancelledProvider(req.user.name)
-      )
-      .catch(console.error);
+        `KaziShow: ${booking.customer.name} cancelled the booking for ${booking.service?.name || 'Service'} on ${new Date(booking.scheduledDate).toLocaleDateString('en-KE')}. Reason: ${reason}`
+      ).catch(console.error);
+      // Notify customer of refund status
+      notificationSvc.createNotification({
+        userId: booking.customerId,
+        type: 'SYSTEM',
+        title: '✅ Booking Cancelled',
+        body: `Your booking has been cancelled. ${refundMessage}`,
+        bookingId,
+      }).catch(console.error);
+    } else {
+      // Provider cancelled — notify customer with full refund
+      notificationSvc.createNotification({
+        userId: booking.customerId,
+        type: 'SYSTEM',
+        title: '❌ Provider Cancelled Your Booking',
+        body: `${booking.provider.businessName} cancelled your booking. ${refundMessage}. We apologise for the inconvenience.`,
+        bookingId,
+      }).catch(console.error);
+      smsSvc.sendSMS(
+        booking.customer.phone,
+        `KaziShow: ${booking.provider.businessName} cancelled your booking for ${booking.service?.name || 'Service'}. ${refundMessage}. Please book another provider.`
+      ).catch(console.error);
+    }
 
-    socketSvc.emitBookingCancelled(booking.provider.user.id, { bookingId: booking.id });
+    // Notify admins
+    prisma.user.findMany({ where: { role: 'ADMIN' } }).then((admins) => {
+      for (const admin of admins) {
+        notificationSvc.createNotification({
+          userId: admin.id,
+          type: 'SYSTEM',
+          title: '❌ Booking Cancelled',
+          body: `Cancelled by ${isCustomer ? booking.customer.name : booking.provider.businessName}. Refund: KSh ${refundAmount}. Reason: ${reason}`,
+          bookingId,
+        }).catch(console.error);
+      }
+    }).catch(console.error);
 
-    res.json({ success: true, data: updated });
+    console.log(`❌ Booking ${bookingId} cancelled — Refund: KSh ${refundAmount}`);
+
+    res.json({
+      success: true,
+      data: { message: 'Booking cancelled successfully', refundAmount, refundMessage },
+    });
   } catch (err) {
     console.error('❌ cancelBooking error:', err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+// ── RELEASE PAYMENT TO PROVIDER ────────────────────────────────────────────────
+async function releasePaymentToProvider(booking) {
+  try {
+    const commissionRate = parseFloat(process.env.COMMISSION_RATE) || 0.10;
+    const commission = Math.round(booking.totalAmount * commissionRate);
+    const providerAmount = booking.totalAmount - commission;
+
+    // Update payment record with split amounts
+    if (booking.payment) {
+      await prisma.payment.update({
+        where: { bookingId: booking.id },
+        data: { providerAmount, commission },
+      });
+    }
+
+    // Credit provider wallet
+    await prisma.provider.update({
+      where: { id: booking.providerId },
+      data: {
+        walletBalance: { increment: providerAmount },
+        totalEarned: { increment: providerAmount },
+      },
+    });
+
+    // Mark payment as released on booking
+    await prisma.booking.update({
+      where: { id: booking.id },
+      data: { paymentReleasedAt: new Date() },
+    });
+
+    // Notify provider
+    const notifSvc = require('../services/notification.service');
+    notifSvc.createNotification({
+      userId: booking.provider.userId,
+      type: 'PAYMENT_RECEIVED',
+      title: '💰 Payment Released!',
+      body: `KSh ${providerAmount} has been added to your earnings for ${booking.service?.name || 'Service'}. Well done!`,
+      bookingId: booking.id,
+    }).catch(console.error);
+
+    if (booking.provider.user?.deviceToken) {
+      const firebaseSvc = require('../services/firebase.service');
+      firebaseSvc.sendPushNotification({
+        deviceToken: booking.provider.user.deviceToken,
+        title: '💰 Payment Released!',
+        body: `KSh ${providerAmount} earned from ${booking.customer.name}. Check your earnings.`,
+        data: { url: '/provider/earnings' },
+      }).catch(console.error);
+    }
+
+    const smsSvc = require('../services/sms.service');
+    smsSvc.sendSMS(
+      booking.provider.user.phone,
+      `KaziShow: KSh ${providerAmount} has been released to your earnings for completing ${booking.service?.name || 'Service'} for ${booking.customer.name}. Check your earnings dashboard.`
+    ).catch(console.error);
+
+    console.log(`💰 Payment released: KSh ${providerAmount} to ${booking.provider.businessName}`);
+  } catch (err) {
+    console.error('❌ releasePaymentToProvider error:', err.message);
+    throw err;
+  }
+}
+
+// ── CUSTOMER CONFIRMS JOB COMPLETE ─────────────────────────────────────────────
+async function confirmJobComplete(req, res) {
+  try {
+    const bookingId = req.params.id;
+
+    const booking = await prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: BOOKING_INCLUDE,
+    });
+
+    if (!booking) return res.status(404).json({ success: false, message: 'Booking not found' });
+    if (booking.customerId !== req.user.id) {
+      return res.status(403).json({ success: false, message: 'Only the customer can confirm job completion' });
+    }
+    if (booking.status !== 'COMPLETED') {
+      return res.status(400).json({ success: false, message: 'This booking has not been marked as completed yet' });
+    }
+    if (booking.customerConfirmed) {
+      return res.status(400).json({ success: false, message: 'You have already confirmed this job' });
+    }
+
+    await prisma.booking.update({
+      where: { id: bookingId },
+      data: { customerConfirmed: true, customerConfirmedAt: new Date() },
+    });
+
+    await releasePaymentToProvider(booking);
+
+    console.log(`✅ Customer confirmed job complete: ${bookingId}`);
+
+    res.json({
+      success: true,
+      data: { message: 'Thank you for confirming! Payment has been released to the provider.' },
+    });
+  } catch (err) {
+    console.error('❌ confirmJobComplete error:', err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+// ── ADMIN CANCELLATION STATS ───────────────────────────────────────────────────
+async function getCancellationStats(req, res) {
+  try {
+    const [cancellations, aggregate] = await Promise.all([
+      prisma.bookingCancellation.findMany({
+        include: {
+          booking: {
+            include: {
+              customer: { select: { name: true } },
+              provider: { select: { businessName: true } },
+              service: { select: { name: true } },
+            },
+          },
+          user: { select: { name: true, role: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 50,
+      }),
+      prisma.bookingCancellation.aggregate({
+        where: { refundStatus: 'PENDING' },
+        _sum: { refundAmount: true },
+        _count: true,
+      }),
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        cancellations,
+        pendingRefunds: aggregate._count,
+        pendingRefundAmount: aggregate._sum.refundAmount || 0,
+      },
+    });
+  } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
 }
@@ -622,6 +892,9 @@ module.exports = {
   declineBooking,
   updateStatus,
   cancelBooking,
+  confirmJobComplete,
+  releasePaymentToProvider,
+  getCancellationStats,
   getTracking,
   updateProviderLocation,
   notifyWaitlist,

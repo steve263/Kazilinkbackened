@@ -196,7 +196,7 @@ async function notifyNewBooking({ booking, providerUser, customerUser }) {
           title: '⏰ Booking Timed Out',
           body: 'Provider did not respond. Please try another provider.',
           emoji: '⏰',
-          data: { url: '/discover', type: 'BOOKING_DECLINED' },
+          data: { url: '/discover', type: 'BOOKING_DECLINED', role: 'CUSTOMER' },
         }).catch(console.error);
 
         smsSvc
@@ -237,7 +237,7 @@ async function notifyBookingAccepted({ booking, customerUser, providerName }) {
     title,
     body,
     emoji: '✅',
-    data: { url: '/profile', bookingId: booking.id, type: 'BOOKING_ACCEPTED' },
+    data: { url: '/booking', bookingId: booking.id, type: 'BOOKING_ACCEPTED', role: 'CUSTOMER' },
   }).catch(console.error);
 
   smsSvc.sendSMS(customerUser.phone, `KaziShow: ${body}`).catch(console.error);
@@ -263,7 +263,7 @@ async function notifyBookingDeclined({ booking, customerUser, providerName }) {
     title: '❌ Booking Declined',
     body: `${providerName} is not available. Try another provider.`,
     emoji: '❌',
-    data: { url: '/discover', bookingId: booking.id, type: 'BOOKING_DECLINED' },
+    data: { url: '/discover', bookingId: booking.id, type: 'BOOKING_DECLINED', role: 'CUSTOMER' },
   }).catch(console.error);
 
   smsSvc
@@ -324,7 +324,7 @@ async function notifyStatusUpdate({ booking, customerUser, status, providerName,
     const body = message || `${providerName} is on the way to your location!`;
     socketSvc.emitProviderEnRoute(customerUser.id, { booking, providerName });
     await createNotification({ userId: customerUser.id, type: 'SYSTEM', title: '🚗 On The Way!', body, bookingId: booking.id });
-    pushSvc.sendPushNotification({ deviceToken: customerUser.deviceToken, title: '🚗 On The Way!', body, emoji: '🚗', data: { url: '/profile', bookingId: booking.id } }).catch(console.error);
+    pushSvc.sendPushNotification({ deviceToken: customerUser.deviceToken, title: '🚗 On The Way!', body, emoji: '🚗', data: { url: '/booking', bookingId: booking.id, role: 'CUSTOMER' } }).catch(console.error);
     smsSvc.sendSMS(customerUser.phone, `KaziShow: ${body}`).catch(console.error);
 
   } else if (status === 'ARRIVED') {
@@ -336,7 +336,7 @@ async function notifyStatusUpdate({ booking, customerUser, status, providerName,
     const body = message || `${providerName} has arrived at your location!`;
     socketSvc.emitProviderArrived(customerUser.id, { booking, providerName });
     await createNotification({ userId: customerUser.id, type: 'SYSTEM', title: '📍 Provider Arrived!', body, bookingId: booking.id });
-    pushSvc.sendPushNotification({ deviceToken: customerUser.deviceToken, title: '📍 Provider Arrived!', body, emoji: '📍', data: { url: '/profile', bookingId: booking.id } }).catch(console.error);
+    pushSvc.sendPushNotification({ deviceToken: customerUser.deviceToken, title: '📍 Provider Arrived!', body, emoji: '📍', data: { url: '/booking', bookingId: booking.id, role: 'CUSTOMER' } }).catch(console.error);
     smsSvc.sendSMS(customerUser.phone, `KaziShow: ${body}`).catch(console.error);
 
   } else if (status === 'IN_PROGRESS') {
@@ -344,7 +344,7 @@ async function notifyStatusUpdate({ booking, customerUser, status, providerName,
     const body = message || `${providerName} has started your service.`;
     socketSvc.emitToUser(customerUser.id, 'booking_in_progress', { booking, providerName });
     await createNotification({ userId: customerUser.id, type: 'SYSTEM', title: '⚡ Service Started!', body, bookingId: booking.id });
-    pushSvc.sendPushNotification({ deviceToken: customerUser.deviceToken, title: '⚡ Service Started!', body, emoji: '⚡', data: { url: '/profile', bookingId: booking.id } }).catch(console.error);
+    pushSvc.sendPushNotification({ deviceToken: customerUser.deviceToken, title: '⚡ Service Started!', body, emoji: '⚡', data: { url: '/booking', bookingId: booking.id, role: 'CUSTOMER' } }).catch(console.error);
     smsSvc.sendSMS(customerUser.phone, `KaziShow: ${body}`).catch(console.error);
 
   } else if (status === 'COMPLETED') {
@@ -373,7 +373,7 @@ async function notifyJobCompleted({ booking, customerUser, providerName, provide
     title: '🎉 Service Complete!',
     body,
     emoji: '🎉',
-    data: { url: '/profile', bookingId: booking.id, type: 'BOOKING_COMPLETED' },
+    data: { url: '/booking', bookingId: booking.id, type: 'BOOKING_COMPLETED', role: 'CUSTOMER' },
   }).catch(console.error);
 
   smsSvc.sendSMS(customerUser.phone, `KaziShow: ${body}`).catch(console.error);

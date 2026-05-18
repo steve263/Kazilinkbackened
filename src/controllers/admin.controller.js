@@ -13,34 +13,23 @@ async function getStats(req, res) {
     const twoWeeksAgo = new Date(now - 14 * 24 * 60 * 60 * 1000);
     const yesterdayStart = new Date(todayStart - 24 * 60 * 60 * 1000);
 
-    const [
-      totalUsers,
-      usersLastWeek,
-      bookingsToday,
-      bookingsYesterday,
-      revenueMonth,
-      revenueLastMonth,
-      pendingProviders,
-      activeBookings,
-      totalReviews,
-      reviewsLastWeek,
-      newUsersThisWeek,
-      newUsersLastWeek,
-    ] = await Promise.all([
+    const val = (r) => (r.status === 'fulfilled' ? r.value : null);
+
+    const results = await Promise.allSettled([
       prisma.user.count(),
       prisma.user.count({ where: { createdAt: { lt: weekAgo } } }),
       prisma.booking.count({ where: { createdAt: { gte: todayStart } } }),
       prisma.booking.count({ where: { createdAt: { gte: yesterdayStart, lt: todayStart } } }),
-      prisma.payment.aggregate({ where: { status: 'SUCCESS', createdAt: { gte: monthStart } }, _sum: { amount: true } }),
-      prisma.payment.aggregate({
+      prisma.booking.aggregate({
+        where: { status: 'COMPLETED', createdAt: { gte: monthStart } },
+        _sum: { totalAmount: true },
+      }),
+      prisma.booking.aggregate({
         where: {
-          status: 'SUCCESS',
-          createdAt: {
-            gte: new Date(now.getFullYear(), now.getMonth() - 1, 1),
-            lt: monthStart,
-          },
+          status: 'COMPLETED',
+          createdAt: { gte: new Date(now.getFullYear(), now.getMonth() - 1, 1), lt: monthStart },
         },
-        _sum: { amount: true },
+        _sum: { totalAmount: true },
       }),
       prisma.provider.count({ where: { verificationStatus: 'PENDING' } }),
       prisma.booking.count({
@@ -52,6 +41,23 @@ async function getStats(req, res) {
       prisma.user.count({ where: { createdAt: { gte: twoWeeksAgo, lt: weekAgo } } }),
     ]);
 
+    // Log any individual failures so we can see them in Railway logs
+    results.forEach((r, i) => {
+      if (r.status === 'rejected') console.warn(`⚠️ getStats query[${i}] failed:`, r.reason?.message);
+    });
+
+    const totalUsers       = val(results[0])  ?? 0;
+    const bookingsToday    = val(results[2])  ?? 0;
+    const bookingsYesterday= val(results[3])  ?? 0;
+    const revenueMonth     = val(results[4])  ?? { _sum: { totalAmount: null } };
+    const revenueLastMonth = val(results[5])  ?? { _sum: { totalAmount: null } };
+    const pendingProviders = val(results[6])  ?? 0;
+    const activeBookings   = val(results[7])  ?? 0;
+    const totalReviews     = val(results[8])  ?? 0;
+    const reviewsLastWeek  = val(results[9])  ?? 0;
+    const newUsersThisWeek = val(results[10]) ?? 0;
+    const newUsersLastWeek = val(results[11]) ?? 0;
+
     const pct = (curr, prev) => {
       if (prev === 0) return curr > 0 ? 100 : 0;
       return Math.round(((curr - prev) / prev) * 100);
@@ -60,15 +66,15 @@ async function getStats(req, res) {
     res.json({
       success: true,
       data: {
-        totalUsers: { value: totalUsers, change: pct(newUsersThisWeek, newUsersLastWeek) },
-        bookingsToday: { value: bookingsToday, change: pct(bookingsToday, bookingsYesterday) },
+        totalUsers:      { value: totalUsers,      change: pct(newUsersThisWeek, newUsersLastWeek) },
+        bookingsToday:   { value: bookingsToday,   change: pct(bookingsToday, bookingsYesterday) },
         revenueThisMonth: {
-          value: revenueMonth._sum.amount || 0,
-          change: pct(revenueMonth._sum.amount || 0, revenueLastMonth._sum.amount || 0),
+          value: revenueMonth._sum?.totalAmount || 0,
+          change: pct(revenueMonth._sum?.totalAmount || 0, revenueLastMonth._sum?.totalAmount || 0),
         },
         pendingProviders: { value: pendingProviders, change: 0 },
-        activeBookings: { value: activeBookings, change: 0 },
-        totalReviews: { value: totalReviews, change: pct(totalReviews - reviewsLastWeek, reviewsLastWeek) },
+        activeBookings:   { value: activeBookings,   change: 0 },
+        totalReviews:     { value: totalReviews,     change: pct(totalReviews - reviewsLastWeek, reviewsLastWeek) },
       },
     });
   } catch (err) {

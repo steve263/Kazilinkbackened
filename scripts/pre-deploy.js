@@ -10,13 +10,6 @@ async function applyDirectMigrations() {
 
     // ── Enums ──────────────────────────────────────────────────────────────────
 
-    await client.query(`
-      DO $$ BEGIN
-        CREATE TYPE "PaymentMethod" AS ENUM ('MPESA', 'CASH', 'PAY_AFTER');
-      EXCEPTION WHEN duplicate_object THEN null;
-      END $$;
-    `);
-
     // Add DISPUTED to BookingStatus — must run outside a transaction on older PG
     await client.query(`ALTER TYPE "BookingStatus" ADD VALUE IF NOT EXISTS 'DISPUTED';`);
 
@@ -25,7 +18,8 @@ async function applyDirectMigrations() {
     // ── Booking columns ────────────────────────────────────────────────────────
 
     const bookingCols = [
-      `ALTER TABLE "Booking" ADD COLUMN IF NOT EXISTS "paymentMethod"       "PaymentMethod" NOT NULL DEFAULT 'MPESA'`,
+      // paymentMethod stored as TEXT (not enum) — avoids PostgreSQL type creation issues
+      `ALTER TABLE "Booking" ADD COLUMN IF NOT EXISTS "paymentMethod"       TEXT            NOT NULL DEFAULT 'MPESA'`,
       `ALTER TABLE "Booking" ADD COLUMN IF NOT EXISTS "customerConfirmed"   BOOLEAN         NOT NULL DEFAULT false`,
       `ALTER TABLE "Booking" ADD COLUMN IF NOT EXISTS "customerConfirmedAt" TIMESTAMP(3)`,
       `ALTER TABLE "Booking" ADD COLUMN IF NOT EXISTS "paymentReleasedAt"   TIMESTAMP(3)`,

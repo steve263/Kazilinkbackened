@@ -32,11 +32,11 @@ async function getOverviewStats(req, res) {
       prisma.booking.count({ where: { createdAt: { gte: startOfLastMonth, lte: endOfLastMonth } } }),
       prisma.booking.count({ where: { status: 'COMPLETED' } }),
       prisma.payment.aggregate({
-        where: { status: 'PAID' },
+        where: { status: 'SUCCESS' },
         _sum: { commission: true },
       }),
       prisma.payment.aggregate({
-        where: { status: 'PAID', createdAt: { gte: startOfLastMonth, lte: endOfLastMonth } },
+        where: { status: 'SUCCESS', createdAt: { gte: startOfLastMonth, lte: endOfLastMonth } },
         _sum: { commission: true },
       }),
       prisma.provider.count({ where: { verificationStatus: 'PENDING' } }),
@@ -55,7 +55,7 @@ async function getOverviewStats(req, res) {
     });
 
     const thisMonthRevenue = await prisma.payment.aggregate({
-      where: { status: 'PAID', createdAt: { gte: startOfMonth } },
+      where: { status: 'SUCCESS', createdAt: { gte: startOfMonth } },
       _sum: { commission: true },
     });
 
@@ -111,7 +111,7 @@ async function getDailyBookings(req, res) {
       const [bookings, revenue, completed] = await Promise.all([
         prisma.booking.count({ where: { createdAt: { gte: start, lte: end } } }),
         prisma.payment.aggregate({
-          where: { status: 'PAID', createdAt: { gte: start, lte: end } },
+          where: { status: 'SUCCESS', createdAt: { gte: start, lte: end } },
           _sum: { commission: true },
         }),
         prisma.booking.count({
@@ -142,7 +142,7 @@ async function getRevenueByCategory(req, res) {
     for (const category of categories) {
       const [revenue, bookings] = await Promise.all([
         prisma.payment.aggregate({
-          where: { status: 'PAID', booking: { provider: { category } } },
+          where: { status: 'SUCCESS', booking: { provider: { category } } },
           _sum: { commission: true, amount: true },
         }),
         prisma.booking.count({ where: { provider: { category } } }),
@@ -264,13 +264,13 @@ async function getBookingStatusBreakdown(req, res) {
 
 async function getPaymentStats(req, res) {
   try {
-    const [paid, unpaid, failed, refunded, totalAmount] = await Promise.all([
-      prisma.payment.count({ where: { status: 'PAID' } }),
-      prisma.payment.count({ where: { status: 'UNPAID' } }),
+    const [paid, pending, failed, refunded, totalAmount] = await Promise.all([
+      prisma.payment.count({ where: { status: 'SUCCESS' } }),
+      prisma.payment.count({ where: { status: 'PENDING' } }),
       prisma.payment.count({ where: { status: 'FAILED' } }),
-      prisma.payment.count({ where: { status: 'REFUNDED' } }),
+      prisma.booking.count({ where: { paymentStatus: 'REFUNDED' } }),
       prisma.payment.aggregate({
-        where: { status: 'PAID' },
+        where: { status: 'SUCCESS' },
         _sum: { amount: true, commission: true, providerAmount: true },
       }),
     ]);
@@ -279,7 +279,7 @@ async function getPaymentStats(req, res) {
       success: true,
       data: {
         paid,
-        unpaid,
+        pending,
         failed,
         refunded,
         totalProcessed: Math.round(totalAmount._sum.amount || 0),
@@ -311,7 +311,7 @@ async function getRecentActivity(req, res) {
       }),
       prisma.payment.findMany({
         take: 10,
-        where: { status: 'PAID' },
+        where: { status: 'SUCCESS' },
         orderBy: { createdAt: 'desc' },
         include: {
           booking: {

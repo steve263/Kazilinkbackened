@@ -16,11 +16,11 @@ async function getEarningsSummary(req, res) {
     const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
 
     const [todayEarnings, weekEarnings, monthEarnings, lastMonthEarnings, totalEarnings, pendingPayouts, completedPayouts] = await Promise.all([
-      prisma.payment.aggregate({ where: { booking: { providerId: provider.id }, status: 'PAID', createdAt: { gte: startOfToday } }, _sum: { providerAmount: true }, _count: true }),
-      prisma.payment.aggregate({ where: { booking: { providerId: provider.id }, status: 'PAID', createdAt: { gte: startOfWeek } }, _sum: { providerAmount: true }, _count: true }),
-      prisma.payment.aggregate({ where: { booking: { providerId: provider.id }, status: 'PAID', createdAt: { gte: startOfMonth } }, _sum: { providerAmount: true }, _count: true }),
-      prisma.payment.aggregate({ where: { booking: { providerId: provider.id }, status: 'PAID', createdAt: { gte: startOfLastMonth, lte: endOfLastMonth } }, _sum: { providerAmount: true }, _count: true }),
-      prisma.payment.aggregate({ where: { booking: { providerId: provider.id }, status: 'PAID' }, _sum: { providerAmount: true, commission: true, amount: true }, _count: true }),
+      prisma.payment.aggregate({ where: { booking: { providerId: provider.id }, status: 'SUCCESS', createdAt: { gte: startOfToday } }, _sum: { providerAmount: true }, _count: true }),
+      prisma.payment.aggregate({ where: { booking: { providerId: provider.id }, status: 'SUCCESS', createdAt: { gte: startOfWeek } }, _sum: { providerAmount: true }, _count: true }),
+      prisma.payment.aggregate({ where: { booking: { providerId: provider.id }, status: 'SUCCESS', createdAt: { gte: startOfMonth } }, _sum: { providerAmount: true }, _count: true }),
+      prisma.payment.aggregate({ where: { booking: { providerId: provider.id }, status: 'SUCCESS', createdAt: { gte: startOfLastMonth, lte: endOfLastMonth } }, _sum: { providerAmount: true }, _count: true }),
+      prisma.payment.aggregate({ where: { booking: { providerId: provider.id }, status: 'SUCCESS' }, _sum: { providerAmount: true, commission: true, amount: true }, _count: true }),
       prisma.payout.aggregate({ where: { providerId: provider.id, status: { in: ['PENDING', 'APPROVED', 'PROCESSING'] } }, _sum: { amount: true } }),
       prisma.payout.aggregate({ where: { providerId: provider.id, status: 'COMPLETED' }, _sum: { amount: true } }),
     ]);
@@ -73,7 +73,7 @@ async function getEarningsHistory(req, res) {
       const end = new Date(date); end.setHours(23, 59, 59, 999);
 
       const dayEarnings = await prisma.payment.aggregate({
-        where: { booking: { providerId: provider.id }, status: 'PAID', createdAt: { gte: start, lte: end } },
+        where: { booking: { providerId: provider.id }, status: 'SUCCESS', createdAt: { gte: start, lte: end } },
         _sum: { providerAmount: true, commission: true },
         _count: true,
       });
@@ -88,7 +88,7 @@ async function getEarningsHistory(req, res) {
     }
 
     const transactions = await prisma.payment.findMany({
-      where: { booking: { providerId: provider.id }, status: 'PAID' },
+      where: { booking: { providerId: provider.id }, status: 'SUCCESS' },
       include: { booking: { include: { customer: { select: { name: true } }, service: { select: { name: true } } } } },
       orderBy: { createdAt: 'desc' },
       take: 20,
@@ -109,7 +109,7 @@ async function requestPayout(req, res) {
     if (!provider) return res.status(404).json({ success: false, message: 'Provider not found' });
 
     const [totalEarned, totalPaidOut, pendingPayouts] = await Promise.all([
-      prisma.payment.aggregate({ where: { booking: { providerId: provider.id }, status: 'PAID' }, _sum: { providerAmount: true } }),
+      prisma.payment.aggregate({ where: { booking: { providerId: provider.id }, status: 'SUCCESS' }, _sum: { providerAmount: true } }),
       prisma.payout.aggregate({ where: { providerId: provider.id, status: 'COMPLETED' }, _sum: { amount: true } }),
       prisma.payout.aggregate({ where: { providerId: provider.id, status: { in: ['PENDING', 'APPROVED', 'PROCESSING'] } }, _sum: { amount: true } }),
     ]);

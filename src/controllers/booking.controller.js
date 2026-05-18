@@ -1263,6 +1263,88 @@ async function waiveCommission(req, res) {
   }
 }
 
+// ── CUSTOMER REQUESTS REFUND ──────────────────────────────────────────────────
+async function requestRefund(req, res) {
+  try {
+    const { id: bookingId } = req.params;
+    const { phone } = req.body;
+    const customerId = req.user.id;
+
+    const booking = await prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: {
+        customer: true,
+        provider: { include: { user: true } },
+        service: true,
+      },
+    });
+
+    if (!booking) return res.status(404).json({ success: false, message: 'Booking not found' });
+    if (booking.customerId !== customerId) {
+      return res.status(403).json({ success: false, message: 'Not your booking' });
+    }
+    if (!['DECLINED', 'CANCELLED'].includes(booking.status)) {
+      return res.status(400).json({ success: false, message: 'Refund only available for declined or cancelled bookings' });
+    }
+    if (booking.paymentStatus !== 'PAID') {
+      return res.status(400).json({ success: false, message: 'No M-Pesa payment was made for this booking' });
+    }
+
+    // Mark as refunded to prevent duplicate requests
+    await prisma.booking.update({
+      where: { id: bookingId },
+      data: { paymentStatus: 'REFUNDED' },
+    });
+
+    const refundPhone = (phone && phone.trim()) || booking.customer.phone;
+    const amount = booking.totalAmount || 0;
+    const serviceName = booking.service?.name || 'Service';
+    const ref = bookingId.slice(-8).toUpperCase();
+
+    // Notify customer
+    notificationSvc.createNotification({
+      userId: customerId,
+      type: 'SYSTEM',
+      title: '💸 Refund Request Received',
+      body: `Your refund of KSh ${amount} for "${serviceName}" has been submitted. Expect your M-Pesa refund within 24 hours. Ref: ${ref}`,
+      bookingId,
+    }).catch(console.error);
+
+    // Notify all admins
+    const admins = await prisma.user.findMany({ where: { role: 'ADMIN' } });
+    for (const admin of admins) {
+      notificationSvc.createNotification({
+        userId: admin.id,
+        type: 'SYSTEM',
+        title: '💸 Refund Request',
+        body: `${booking.customer.name} requests KSh ${amount} refund for "${serviceName}" (${booking.status}). Phone: ${refundPhone}. Ref: ${ref}`,
+        bookingId,
+      }).catch(console.error);
+    }
+
+    // SMS customer
+    const smsSvc = require('../services/sms.service');
+    smsSvc.sendSMS(
+      refundPhone,
+      `KaziShow: Refund request of KSh ${amount} for "${serviceName}" received. You will receive an M-Pesa payment within 24 hours. Ref: ${ref}`
+    ).catch(console.error);
+
+    console.log(`💸 Refund requested: KSh ${amount} for booking ${bookingId} → ${refundPhone}`);
+
+    res.json({
+      success: true,
+      data: {
+        message: `Refund of KSh ${amount} will be sent to ${refundPhone} within 24 hours`,
+        amount,
+        phone: refundPhone,
+      },
+    });
+  } catch (err) {
+    console.error('❌ requestRefund error:', err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
 // ── CUSTOMER DISPUTES JOB ─────────────────────────────────────────────────────
 async function disputeJob(req, res) {
   try {
@@ -1388,4 +1470,5 @@ module.exports = {
   getAllCommissions,
   waiveCommission,
   disputeJob,
+  requestRefund,
 };

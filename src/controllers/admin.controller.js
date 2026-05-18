@@ -573,6 +573,93 @@ async function rejectPortfolioVideo(req, res) {
   }
 }
 
+// ─── Global search ────────────────────────────────────────────────────────────
+
+async function adminSearch(req, res) {
+  try {
+    const { q = '' } = req.query;
+    const term = q.trim();
+    if (!term || term.length < 2) {
+      return res.json({ success: true, data: { users: [], providers: [], bookings: [] } });
+    }
+
+    const like = { contains: term, mode: 'insensitive' };
+
+    const [users, providers, bookings] = await Promise.all([
+      prisma.user.findMany({
+        where: { OR: [{ name: like }, { email: like }, { phone: like }] },
+        select: { id: true, name: true, email: true, phone: true, role: true, isSuspended: true },
+        take: 6,
+      }),
+      prisma.provider.findMany({
+        where: { OR: [{ businessName: like }, { category: like }] },
+        select: { id: true, businessName: true, category: true, isVerified: true, user: { select: { name: true, phone: true } } },
+        take: 6,
+      }),
+      prisma.booking.findMany({
+        where: {
+          OR: [
+            { customer: { name: like } },
+            { provider: { businessName: like } },
+            { service: { name: like } },
+            { id: { contains: term } },
+          ],
+        },
+        select: {
+          id: true, status: true, totalAmount: true,
+          customer: { select: { name: true } },
+          provider:  { select: { businessName: true } },
+          service:   { select: { name: true } },
+        },
+        take: 6,
+        orderBy: { createdAt: 'desc' },
+      }),
+    ]);
+
+    res.json({ success: true, data: { users, providers, bookings } });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+// ─── Sidebar badge counts ─────────────────────────────────────────────────────
+
+async function adminBadges(req, res) {
+  try {
+    const [
+      pendingProviders,
+      pendingCerts,
+      pendingVideos,
+      pendingTestimonials,
+      pendingTips,
+      pendingWithdrawals,
+      disputes,
+      pendingAppeals,
+    ] = await Promise.all([
+      prisma.provider.count({ where: { status: 'PENDING' } }),
+      prisma.providerCertificate.count({ where: { status: 'PENDING' } }).catch(() => 0),
+      prisma.portfolioVideo.count({ where: { status: 'PENDING' } }).catch(() => 0),
+      prisma.testimonial.count({ where: { status: 'PENDING' } }).catch(() => 0),
+      prisma.tip.count({ where: { status: 'PENDING' } }).catch(() => 0),
+      prisma.withdrawal.count({ where: { status: 'PENDING' } }).catch(() => 0),
+      prisma.booking.count({ where: { status: 'DISPUTED' } }),
+      prisma.appeal.count({ where: { status: 'PENDING' } }).catch(() => 0),
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        approvals: pendingProviders + pendingCerts + pendingVideos + pendingTestimonials + pendingTips,
+        bookings:  disputes,
+        withdrawals: pendingWithdrawals,
+        appeals:   pendingAppeals,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
 module.exports = {
   getStats,
   getPendingProviders,
@@ -592,4 +679,6 @@ module.exports = {
   getPendingPortfolioVideos,
   approvePortfolioVideo,
   rejectPortfolioVideo,
+  adminSearch,
+  adminBadges,
 };

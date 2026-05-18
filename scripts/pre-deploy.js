@@ -13,6 +13,14 @@ async function applyDirectMigrations() {
     // Add DISPUTED to BookingStatus — must run outside a transaction on older PG
     await client.query(`ALTER TYPE "BookingStatus" ADD VALUE IF NOT EXISTS 'DISPUTED';`);
 
+    // Create CommissionStatus enum if it doesn't exist yet
+    await client.query(`
+      DO $$ BEGIN
+        CREATE TYPE "CommissionStatus" AS ENUM ('PENDING', 'PAID', 'OVERDUE', 'WAIVED');
+      EXCEPTION WHEN duplicate_object THEN NULL;
+      END $$;
+    `);
+
     console.log('[pre-deploy] Enums ready');
 
     // ── Booking columns ────────────────────────────────────────────────────────
@@ -80,6 +88,57 @@ async function applyDirectMigrations() {
     `);
 
     console.log('[pre-deploy] Subscription backfill complete');
+
+    // ── OutstandingCommission columns ──────────────────────────────────────────
+    // Table may exist from an older migration without all columns — add them safely
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS "OutstandingCommission" (
+        "id"                TEXT          NOT NULL,
+        "bookingId"         TEXT          NOT NULL,
+        "providerId"        TEXT          NOT NULL,
+        "amount"            DOUBLE PRECISION NOT NULL DEFAULT 0,
+        "status"            "CommissionStatus" NOT NULL DEFAULT 'PENDING',
+        "mpesaRef"          TEXT,
+        "checkoutRequestId" TEXT,
+        "dueAt"             TIMESTAMP(3)  NOT NULL DEFAULT NOW(),
+        "paidAt"            TIMESTAMP(3),
+        "waivedAt"          TIMESTAMP(3),
+        "waivedBy"          TEXT,
+        "waiveReason"       TEXT,
+        "createdAt"         TIMESTAMP(3)  NOT NULL DEFAULT NOW(),
+        "updatedAt"         TIMESTAMP(3)  NOT NULL DEFAULT NOW(),
+        CONSTRAINT "OutstandingCommission_pkey" PRIMARY KEY ("id")
+      );
+    `);
+
+    const commissionCols = [
+      `ALTER TABLE "OutstandingCommission" ADD COLUMN IF NOT EXISTS "amount"            DOUBLE PRECISION NOT NULL DEFAULT 0`,
+      `ALTER TABLE "OutstandingCommission" ADD COLUMN IF NOT EXISTS "status"            "CommissionStatus" NOT NULL DEFAULT 'PENDING'`,
+      `ALTER TABLE "OutstandingCommission" ADD COLUMN IF NOT EXISTS "mpesaRef"          TEXT`,
+      `ALTER TABLE "OutstandingCommission" ADD COLUMN IF NOT EXISTS "checkoutRequestId" TEXT`,
+      `ALTER TABLE "OutstandingCommission" ADD COLUMN IF NOT EXISTS "dueAt"             TIMESTAMP(3)`,
+      `ALTER TABLE "OutstandingCommission" ADD COLUMN IF NOT EXISTS "paidAt"            TIMESTAMP(3)`,
+      `ALTER TABLE "OutstandingCommission" ADD COLUMN IF NOT EXISTS "waivedAt"          TIMESTAMP(3)`,
+      `ALTER TABLE "OutstandingCommission" ADD COLUMN IF NOT EXISTS "waivedBy"          TEXT`,
+      `ALTER TABLE "OutstandingCommission" ADD COLUMN IF NOT EXISTS "waiveReason"       TEXT`,
+      `ALTER TABLE "OutstandingCommission" ADD COLUMN IF NOT EXISTS "createdAt"         TIMESTAMP(3) NOT NULL DEFAULT NOW()`,
+      `ALTER TABLE "OutstandingCommission" ADD COLUMN IF NOT EXISTS "updatedAt"         TIMESTAMP(3) NOT NULL DEFAULT NOW()`,
+    ];
+
+    for (const sql of commissionCols) {
+      await client.query(sql);
+    }
+
+    // Unique constraint on bookingId
+    await client.query(`
+      DO $$ BEGIN
+        ALTER TABLE "OutstandingCommission" ADD CONSTRAINT "OutstandingCommission_bookingId_key" UNIQUE ("bookingId");
+      EXCEPTION WHEN duplicate_object THEN NULL;
+      END $$;
+    `);
+
+    console.log('[pre-deploy] OutstandingCommission columns ready');
 
   } catch (err) {
     console.error('[pre-deploy] Direct migration error (non-fatal):', err.message);

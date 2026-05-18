@@ -31,6 +31,17 @@ async function applyDirectMigrations() {
     for (const sql of bookingCols) {
       await client.query(sql);
     }
+
+    // Backfill non-FUNDI bookings to BUSINESS_DIRECT
+    await client.query(`
+      UPDATE "Booking" b
+      SET "paymentMethod" = 'BUSINESS_DIRECT'
+      FROM "Provider" p
+      WHERE b."providerId" = p.id
+        AND p.category != 'FUNDI'
+        AND b."paymentMethod" = 'MPESA'
+    `);
+
     console.log('[pre-deploy] Booking columns ready');
 
     // ── Provider columns ───────────────────────────────────────────────────────

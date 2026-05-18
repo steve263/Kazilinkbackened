@@ -16,7 +16,7 @@ const BOOKING_INCLUDE = {
 
 async function createBooking(req, res) {
   try {
-    const { providerId, serviceId, scheduledDate, scheduledTime, address, lat, lng, notes } = req.body;
+    const { providerId, serviceId, scheduledDate, scheduledTime, address, lat, lng, notes, paymentMethod } = req.body;
 
     if (!providerId || !scheduledDate || !scheduledTime || !address) {
       return res.status(400).json({
@@ -67,6 +67,9 @@ async function createBooking(req, res) {
     }
 
     const isFundi = provider.category === 'FUNDI';
+    const finalPaymentMethod = isFundi
+      ? (paymentMethod || 'MPESA')
+      : 'BUSINESS_DIRECT';
 
     const booking = await prisma.$transaction(async (tx) => {
       return tx.booking.create({
@@ -81,6 +84,7 @@ async function createBooking(req, res) {
           lng: lng ? parseFloat(lng) : null,
           totalAmount,
           notes,
+          paymentMethod: finalPaymentMethod,
           status: 'PENDING',
         },
         include: BOOKING_INCLUDE,

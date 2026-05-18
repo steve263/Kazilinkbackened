@@ -41,7 +41,7 @@ async function createBooking(req, res) {
       if (!isActive) {
         return res.status(403).json({
           success: false,
-          message: 'This business subscription has expired. They cannot receive bookings.',
+          message: 'This business is not currently accepting bookings. Please try another provider.',
           code: 'SUBSCRIPTION_EXPIRED',
         });
       }

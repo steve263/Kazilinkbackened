@@ -58,6 +58,29 @@ async function applyDirectMigrations() {
     }
     console.log('[pre-deploy] Provider columns ready');
 
+    // ── Backfill: give existing businesses a free trial if they have no subscription ─
+
+    await client.query(`
+      INSERT INTO "Subscription" (
+        "id", "providerId", "plan", "status",
+        "trialStartDate", "trialEndDate", "createdAt", "updatedAt"
+      )
+      SELECT
+        gen_random_uuid()::text,
+        p.id,
+        'STARTER',
+        'TRIAL',
+        NOW(),
+        NOW() + INTERVAL '14 days',
+        NOW(),
+        NOW()
+      FROM "Provider" p
+      WHERE p.category != 'FUNDI'
+        AND p.id NOT IN (SELECT "providerId" FROM "Subscription")
+    `);
+
+    console.log('[pre-deploy] Subscription backfill complete');
+
   } catch (err) {
     console.error('[pre-deploy] Direct migration error (non-fatal):', err.message);
   } finally {

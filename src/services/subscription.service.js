@@ -75,15 +75,34 @@ async function createFreeTrial(providerId) {
 
 async function isSubscriptionActive(providerId) {
   try {
-    const sub = await prisma.subscription.findUnique({ where: { providerId } });
-    if (!sub) return false;
-
     const now = new Date();
-    if (sub.status === 'TRIAL' && sub.trialEndDate > now) return true;
-    if (sub.status === 'ACTIVE' && sub.currentPeriodEnd && sub.currentPeriodEnd > now) return true;
+    let sub = await prisma.subscription.findUnique({ where: { providerId } });
+
+    // No subscription at all — auto-create a free trial so new businesses can receive bookings
+    if (!sub) {
+      console.log(`🎁 No subscription found for provider ${providerId} — auto-creating free trial`);
+      sub = await createFreeTrial(providerId);
+      return true;
+    }
+
+    if (sub.status === 'TRIAL') {
+      const active = new Date(sub.trialEndDate) > now;
+      console.log(`🎁 Trial check [${providerId}]: ${active ? 'ACTIVE' : 'EXPIRED'} — ends ${sub.trialEndDate}`);
+      return active;
+    }
+
+    if (sub.status === 'ACTIVE') {
+      if (!sub.currentPeriodEnd) return true;
+      const active = new Date(sub.currentPeriodEnd) > now;
+      console.log(`💳 Sub check [${providerId}]: ${active ? 'ACTIVE' : 'EXPIRED'}`);
+      return active;
+    }
+
+    console.log(`❌ Sub inactive [${providerId}]: ${sub.status}`);
     return false;
-  } catch {
-    return false;
+  } catch (err) {
+    console.error('❌ isSubscriptionActive error:', err.message);
+    return true; // fail open — don't block customers if the check itself errors
   }
 }
 

@@ -747,11 +747,13 @@ async function getCancellationStats(req, res) {
         _sum: { refundAmount: true },
         _count: true,
       }),
-      // Refund requests: bookings where customer requested M-Pesa refund
+      // Refund requests: bookings where customer has requested a refund
+      // REFUND_REQUESTED = pending admin action, REFUNDED = already processed (history)
       prisma.booking.findMany({
         where: {
-          paymentStatus: 'REFUNDED',
           status: { in: ['CANCELLED', 'DECLINED'] },
+          paymentStatus: { in: ['REFUND_REQUESTED', 'REFUNDED'] },
+          totalAmount: { gt: 0 },
         },
         include: {
           customer: { select: { name: true, phone: true } },
@@ -1425,14 +1427,34 @@ async function requestRefund(req, res) {
     if (!['DECLINED', 'CANCELLED'].includes(booking.status)) {
       return res.status(400).json({ success: false, message: 'Refund only available for declined or cancelled bookings' });
     }
-    if (booking.paymentStatus !== 'PAID') {
-      return res.status(400).json({ success: false, message: 'No M-Pesa payment was made for this booking' });
+    if (!['PAID'].includes(booking.paymentStatus)) {
+      return res.status(400).json({
+        success: false,
+        message: ['REFUND_REQUESTED', 'REFUNDED'].includes(booking.paymentStatus)
+          ? 'Refund already requested or processed'
+          : 'No M-Pesa payment was made for this booking',
+      });
     }
 
-    // Mark as refunded to prevent duplicate requests
+    // Mark as REFUND_REQUESTED so admin can see it in the refund queue.
+    // paymentStatus stays REFUND_REQUESTED until admin sends the money,
+    // then admin action sets it to REFUNDED.
     await prisma.booking.update({
       where: { id: bookingId },
-      data: { paymentStatus: 'REFUNDED' },
+      data: { paymentStatus: 'REFUND_REQUESTED' },
+    });
+
+    // Create/update cancellation record to track the pending refund
+    await prisma.bookingCancellation.upsert({
+      where: { bookingId },
+      update: { refundStatus: 'PENDING', refundAmount: booking.totalAmount || 0 },
+      create: {
+        bookingId,
+        cancelledBy: customerId,
+        reason: 'Customer requested M-Pesa refund',
+        refundAmount: booking.totalAmount || 0,
+        refundStatus: 'PENDING',
+      },
     });
 
     const refundPhone = (phone && phone.trim()) || booking.customer.phone;

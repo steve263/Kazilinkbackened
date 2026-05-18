@@ -20,6 +20,7 @@ const {
   waiveCommission,
   disputeJob,
   requestRefund,
+  markRefundProcessed,
 } = require('../controllers/booking.controller');
 const { auth, requireRole } = require('../middleware/auth');
 
@@ -28,6 +29,7 @@ router.get('/', auth, getBookings);
 
 // Literal routes MUST come before /:id to avoid param capture
 router.get('/admin/cancellations', auth, requireRole('ADMIN'), getCancellationStats);
+router.put('/admin/cancellations/:id/refund-processed', auth, requireRole('ADMIN'), markRefundProcessed);
 router.get('/admin/commissions', auth, requireRole('ADMIN'), getAllCommissions);
 router.post('/commission-callback', commissionCallback);
 router.get('/my-commissions', auth, requireRole('PROVIDER'), getOutstandingCommission);

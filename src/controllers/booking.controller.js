@@ -708,36 +708,109 @@ async function confirmJobComplete(req, res) {
 // ── ADMIN CANCELLATION STATS ───────────────────────────────────────────────────
 async function getCancellationStats(req, res) {
   try {
-    const [cancellations, aggregate] = await Promise.all([
+    const { filter = 'ALL', page = '1', limit = '20', search = '' } = req.query;
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    const where = {};
+    if (filter === 'PENDING_REFUND')    where.refundStatus = 'PENDING';
+    if (filter === 'REFUNDED')          where.refundStatus = 'REFUNDED';
+    if (filter === 'NOT_APPLICABLE')    where.refundStatus = 'NOT_APPLICABLE';
+    if (search.trim()) {
+      where.OR = [
+        { booking: { customer: { name: { contains: search, mode: 'insensitive' } } } },
+        { booking: { provider: { businessName: { contains: search, mode: 'insensitive' } } } },
+        { reason: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+
+    const bookingInclude = {
+      customer: { select: { name: true, phone: true } },
+      provider: { select: { businessName: true } },
+      service:  { select: { name: true } },
+    };
+
+    const [cancellations, total, aggregate, refundRequests, stats] = await Promise.all([
       prisma.bookingCancellation.findMany({
+        where,
         include: {
-          booking: {
-            include: {
-              customer: { select: { name: true } },
-              provider: { select: { businessName: true } },
-              service: { select: { name: true } },
-            },
-          },
+          booking: { include: bookingInclude },
           user: { select: { name: true, role: true } },
         },
         orderBy: { createdAt: 'desc' },
-        take: 50,
+        skip,
+        take: parseInt(limit),
       }),
+      prisma.bookingCancellation.count({ where }),
       prisma.bookingCancellation.aggregate({
         where: { refundStatus: 'PENDING' },
         _sum: { refundAmount: true },
         _count: true,
       }),
+      // Refund requests: bookings where customer requested M-Pesa refund
+      prisma.booking.findMany({
+        where: {
+          paymentStatus: 'REFUNDED',
+          status: { in: ['CANCELLED', 'DECLINED'] },
+        },
+        include: {
+          customer: { select: { name: true, phone: true } },
+          provider: { select: { businessName: true } },
+          service:  { select: { name: true } },
+        },
+        orderBy: { updatedAt: 'desc' },
+        take: 50,
+      }),
+      // Summary stats
+      Promise.all([
+        prisma.bookingCancellation.count(),
+        prisma.bookingCancellation.aggregate({ _sum: { refundAmount: true } }),
+        prisma.bookingCancellation.count({ where: { refundStatus: 'REFUNDED' } }),
+        prisma.bookingCancellation.count({ where: { refundStatus: 'PENDING' } }),
+      ]),
     ]);
+
+    const [totalCancellations, totalRefundAgg, totalRefunded, totalPending] = stats;
 
     res.json({
       success: true,
       data: {
         cancellations,
+        refundRequests,
+        pagination: { total, page: parseInt(page), limit: parseInt(limit), pages: Math.ceil(total / parseInt(limit)) },
         pendingRefunds: aggregate._count,
         pendingRefundAmount: aggregate._sum.refundAmount || 0,
+        summary: {
+          totalCancellations,
+          totalRefundAmount: totalRefundAgg._sum.refundAmount || 0,
+          totalRefunded,
+          totalPending,
+        },
       },
     });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+// ── ADMIN: MARK REFUND AS PROCESSED ──────────────────────────────────────────
+async function markRefundProcessed(req, res) {
+  try {
+    const { id } = req.params;
+    const cancellation = await prisma.bookingCancellation.findUnique({ where: { id } });
+    if (!cancellation) return res.status(404).json({ success: false, message: 'Not found' });
+
+    await prisma.bookingCancellation.update({
+      where: { id },
+      data: { refundStatus: 'REFUNDED', refundedAt: new Date() },
+    });
+
+    // Also update booking paymentStatus
+    await prisma.booking.update({
+      where: { id: cancellation.bookingId },
+      data: { paymentStatus: 'REFUNDED' },
+    }).catch(() => {});
+
+    res.json({ success: true, data: { message: 'Refund marked as processed' } });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -1471,4 +1544,5 @@ module.exports = {
   waiveCommission,
   disputeJob,
   requestRefund,
+  markRefundProcessed,
 };

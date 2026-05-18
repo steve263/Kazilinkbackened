@@ -209,6 +209,11 @@ async function acceptBooking(req, res) {
     if (booking.provider.userId !== req.user.id) {
       return res.status(403).json({ success: false, message: 'Not authorized' });
     }
+    // Idempotent: already accepted by this provider — just return success
+    if (booking.status === 'ACCEPTED') {
+      return res.json({ success: true, data: booking });
+    }
+
     if (booking.status !== 'PENDING') {
       return res.status(400).json({ success: false, message: `Cannot accept a booking with status ${booking.status}` });
     }

@@ -47,7 +47,16 @@ async function createBooking(req, res) {
       }
     }
 
-    if (provider.isBusy) {
+    let totalAmount = provider.minJobValue;
+    if (serviceId) {
+      const service = await prisma.service.findUnique({ where: { id: serviceId } });
+      if (service && service.priceType === 'FIXED') totalAmount = service.price;
+    }
+
+    const isFundi = provider.category === 'FUNDI';
+
+    // Busy check only applies to Fundi (mobile provider currently on a job)
+    if (isFundi && provider.isBusy) {
       return res.status(400).json({
         success: false,
         message: 'PROVIDER_BUSY',
@@ -59,14 +68,6 @@ async function createBooking(req, res) {
         },
       });
     }
-
-    let totalAmount = provider.minJobValue;
-    if (serviceId) {
-      const service = await prisma.service.findUnique({ where: { id: serviceId } });
-      if (service && service.priceType === 'FIXED') totalAmount = service.price;
-    }
-
-    const isFundi = provider.category === 'FUNDI';
     const finalPaymentMethod = isFundi
       ? (paymentMethod || 'MPESA')
       : 'BUSINESS_DIRECT';

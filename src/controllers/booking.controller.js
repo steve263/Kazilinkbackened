@@ -2,6 +2,7 @@ const prisma = require('../config/db');
 const notificationSvc = require('../services/notification.service');
 const trustSvc = require('../services/trust.service');
 const socketSvc = require('../services/socket.service');
+const mpesaSvc = require('../services/mpesa.service');
 
 const BOOKING_INCLUDE = {
   customer: { select: { id: true, name: true, phone: true, location: true, deviceToken: true } },
@@ -793,25 +794,90 @@ async function getCancellationStats(req, res) {
 }
 
 // ── ADMIN: MARK REFUND AS PROCESSED ──────────────────────────────────────────
+// id can be a BookingCancellation id OR a Booking id — we try both
 async function markRefundProcessed(req, res) {
   try {
     const { id } = req.params;
-    const cancellation = await prisma.bookingCancellation.findUnique({ where: { id } });
-    if (!cancellation) return res.status(404).json({ success: false, message: 'Not found' });
 
-    await prisma.bookingCancellation.update({
-      where: { id },
-      data: { refundStatus: 'REFUNDED', refundedAt: new Date() },
-    });
+    // Try as cancellation record first
+    let cancellation = await prisma.bookingCancellation.findUnique({ where: { id } });
 
-    // Also update booking paymentStatus
-    await prisma.booking.update({
-      where: { id: cancellation.bookingId },
-      data: { paymentStatus: 'REFUNDED' },
-    }).catch(() => {});
+    // If not found, treat id as booking id and look up via bookingId
+    if (!cancellation) {
+      cancellation = await prisma.bookingCancellation.findFirst({ where: { bookingId: id } });
+    }
+
+    if (cancellation) {
+      await prisma.bookingCancellation.update({
+        where: { id: cancellation.id },
+        data: { refundStatus: 'REFUNDED', refundedAt: new Date() },
+      });
+      await prisma.booking.update({
+        where: { id: cancellation.bookingId },
+        data: { paymentStatus: 'REFUNDED' },
+      }).catch(() => {});
+    } else {
+      // No cancellation record — just update the booking's paymentStatus
+      const booking = await prisma.booking.findUnique({ where: { id } });
+      if (!booking) return res.status(404).json({ success: false, message: 'Not found' });
+      await prisma.booking.update({
+        where: { id },
+        data: { paymentStatus: 'REFUNDED' },
+      });
+    }
 
     res.json({ success: true, data: { message: 'Refund marked as processed' } });
   } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+// ── ADMIN: SEND B2C REFUND VIA M-PESA ────────────────────────────────────────
+async function sendB2CRefund(req, res) {
+  try {
+    const { id } = req.params; // booking id
+    const booking = await prisma.booking.findUnique({
+      where: { id },
+      include: { customer: { select: { id: true, name: true, phone: true } } },
+    });
+    if (!booking) return res.status(404).json({ success: false, message: 'Booking not found' });
+    if (!booking.customer?.phone) return res.status(400).json({ success: false, message: 'Customer has no phone number' });
+    if (!booking.totalAmount || booking.totalAmount <= 0) {
+      return res.status(400).json({ success: false, message: 'Invalid refund amount' });
+    }
+
+    const b2cResult = await mpesaSvc.b2c({
+      phone: booking.customer.phone,
+      amount: booking.totalAmount,
+      withdrawalId: `REFUND-${booking.id}`,
+      remarks: `KaziShow refund for cancelled booking`,
+    });
+
+    // Mark booking as refunded
+    await prisma.booking.update({
+      where: { id },
+      data: { paymentStatus: 'REFUNDED' },
+    });
+
+    // Update cancellation record if it exists
+    await prisma.bookingCancellation.updateMany({
+      where: { bookingId: id },
+      data: { refundStatus: 'REFUNDED', refundedAt: new Date() },
+    }).catch(() => {});
+
+    // Notify customer
+    if (booking.customer.id) {
+      await notificationSvc.createNotification({
+        userId: booking.customer.id,
+        type: 'BOOKING_UPDATE',
+        title: 'Refund Sent',
+        message: `Your refund of KSh ${booking.totalAmount.toLocaleString()} has been sent to ${booking.customer.phone} via M-Pesa.`,
+      });
+    }
+
+    res.json({ success: true, data: { message: 'B2C refund initiated', mpesa: b2cResult } });
+  } catch (err) {
+    console.error('❌ sendB2CRefund error:', err.message);
     res.status(500).json({ success: false, message: err.message });
   }
 }
@@ -1545,4 +1611,5 @@ module.exports = {
   disputeJob,
   requestRefund,
   markRefundProcessed,
+  sendB2CRefund,
 };

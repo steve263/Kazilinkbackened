@@ -84,6 +84,7 @@ model Provider {
   yearsExperience    String?
   totalEarned        Float              @default(0)
   walletBalance      Float              @default(0)
+  avgResponseMinutes Int?
   busySince          DateTime?
   isBusy             Boolean            @default(false)
   bookings           Booking[]          @relation("ProviderBookings")
@@ -156,6 +157,7 @@ model Booking {
   paymentMethod       String                @default("MPESA")
   cashPaid            Boolean               @default(false)
   cashPaidAt          DateTime?
+  acceptedAt          DateTime?
   createdAt           DateTime              @default(now())
   updatedAt           DateTime              @updatedAt
   customer            User                  @relation("CustomerBookings", fields: [customerId], references: [id])

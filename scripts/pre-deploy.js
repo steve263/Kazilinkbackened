@@ -34,6 +34,7 @@ async function applyDirectMigrations() {
       `ALTER TABLE "Booking" ADD COLUMN IF NOT EXISTS "completedByProvider" TIMESTAMP(3)`,
       `ALTER TABLE "Booking" ADD COLUMN IF NOT EXISTS "cashPaid"            BOOLEAN         NOT NULL DEFAULT false`,
       `ALTER TABLE "Booking" ADD COLUMN IF NOT EXISTS "cashPaidAt"          TIMESTAMP(3)`,
+      `ALTER TABLE "Booking" ADD COLUMN IF NOT EXISTS "acceptedAt"          TIMESTAMP(3)`,
     ];
 
     for (const sql of bookingCols) {
@@ -57,8 +58,9 @@ async function applyDirectMigrations() {
     const providerCols = [
       `ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "walletBalance" DOUBLE PRECISION NOT NULL DEFAULT 0`,
       `ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "totalEarned"   DOUBLE PRECISION NOT NULL DEFAULT 0`,
-      `ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "isBusy"        BOOLEAN          NOT NULL DEFAULT false`,
-      `ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "busySince"     TIMESTAMP(3)`,
+      `ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "isBusy"               BOOLEAN          NOT NULL DEFAULT false`,
+      `ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "busySince"            TIMESTAMP(3)`,
+      `ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "avgResponseMinutes"   INTEGER`,
     ];
 
     for (const sql of providerCols) {

@@ -218,18 +218,27 @@ async function acceptBooking(req, res) {
       return res.status(400).json({ success: false, message: `Cannot accept a booking with status ${booking.status}` });
     }
 
+    const acceptedAt = new Date();
+    const responseMinutes = Math.round((acceptedAt.getTime() - new Date(booking.createdAt).getTime()) / 60000);
+
     const updated = await prisma.booking.update({
       where: { id: req.params.id },
-      data: { status: 'ACCEPTED' },
+      data: { status: 'ACCEPTED', acceptedAt },
       include: BOOKING_INCLUDE,
     });
 
-    // Mark provider as BUSY
+    // Update rolling average response time (70/30 weighted toward history)
+    const currentAvg = booking.provider.avgResponseMinutes;
+    const newAvg = currentAvg
+      ? Math.round(currentAvg * 0.7 + responseMinutes * 0.3)
+      : responseMinutes;
+
+    // Mark provider as BUSY and record response time
     await prisma.provider.update({
       where: { id: booking.providerId },
-      data: { isBusy: true, busySince: new Date() },
+      data: { isBusy: true, busySince: new Date(), avgResponseMinutes: newAvg },
     });
-    console.log(`🔴 Provider ${booking.provider.businessName} is now BUSY`);
+    console.log(`🔴 Provider ${booking.provider.businessName} is now BUSY · avg response: ${newAvg}min`);
 
     notificationSvc.notifyBookingAccepted({
       booking: updated,

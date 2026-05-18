@@ -89,4 +89,16 @@ async function deleteNotification(req, res) {
   }
 }
 
-module.exports = { getNotifications, getUnreadCount, markRead, markAllRead, deleteNotification };
+async function getLatestBroadcast(req, res) {
+  try {
+    const notification = await prisma.notification.findFirst({
+      where: { userId: req.user.id, type: 'SYSTEM', isRead: false },
+      orderBy: { createdAt: 'desc' },
+    });
+    res.json({ success: true, data: notification });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+module.exports = { getNotifications, getUnreadCount, markRead, markAllRead, deleteNotification, getLatestBroadcast };

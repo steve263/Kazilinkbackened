@@ -12,6 +12,8 @@ router.get('/stats',                          ...adminOnly, ctrl.getStats);
 router.get('/search',                         ...adminOnly, ctrl.adminSearch);
 router.get('/badges',                         ...adminOnly, ctrl.adminBadges);
 router.get('/providers/pending',              ...adminOnly, ctrl.getPendingProviders);
+router.put('/providers/bulk-approve',         ...adminOnly, ctrl.bulkApproveProviders);
+router.put('/providers/bulk-reject',          ...adminOnly, ctrl.bulkRejectProviders);
 router.put('/providers/:id/approve',          ...adminOnly, ctrl.approveProvider);
 router.put('/providers/:id/reject',           ...adminOnly, ctrl.rejectProvider);
 router.put('/providers/:id/toggle-verified',  ...adminOnly, ctrl.toggleVerified);
@@ -48,6 +50,16 @@ router.put('/portfolio-videos/:id/reject',    ...adminOnly, ctrl.rejectPortfolio
 // Withdrawal management
 router.get('/withdrawals',                    ...adminOnly, getAdminWithdrawals);
 router.put('/withdrawals/:id/process',        ...adminOnly, processWithdrawal);
+
+// CSV Export
+router.get('/export',                         ...adminOnly, ctrl.exportData);
+
+// Announcement Broadcast
+router.post('/broadcast',                     ...adminOnly, ctrl.broadcastAnnouncement);
+
+// Auto-Suspension
+router.get('/auto-suspension/candidates',     ...adminOnly, ctrl.getAutoSuspensionCandidates);
+router.post('/auto-suspension/run',           ...adminOnly, ctrl.runAutoSuspension);
 
 // ShowReel management (delete only — no approval flow)
 router.get('/videos',                         ...adminOnly, videoCtrl.adminGetVideos);

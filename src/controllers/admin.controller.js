@@ -579,6 +579,307 @@ async function rejectPortfolioVideo(req, res) {
   }
 }
 
+// ─── Bulk Actions ─────────────────────────────────────────────────────────────
+
+async function bulkApproveProviders(req, res) {
+  try {
+    const { providerIds } = req.body;
+    if (!Array.isArray(providerIds) || providerIds.length === 0) {
+      return res.status(400).json({ success: false, message: 'providerIds array required' });
+    }
+
+    const providers = await prisma.provider.findMany({
+      where: { id: { in: providerIds } },
+      include: { user: true },
+    });
+
+    await prisma.provider.updateMany({
+      where: { id: { in: providerIds } },
+      data: { verificationStatus: 'APPROVED', isVerified: true },
+    });
+
+    for (const p of providers) {
+      smsSvc.sendSMS(p.user.phone, `Congratulations! Your KaziShow profile has been approved. You are now live on the platform.`).catch(console.error);
+      prisma.notification.create({
+        data: { userId: p.userId, type: 'SYSTEM', title: 'Profile Approved! 🎉', body: 'Your profile is now live on KaziShow.' },
+      }).catch(console.error);
+    }
+
+    console.log(`✅ Bulk approved ${providers.length} providers`);
+    res.json({ success: true, data: { approved: providers.length } });
+  } catch (err) {
+    console.error('❌ bulkApproveProviders error:', err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+async function bulkRejectProviders(req, res) {
+  try {
+    const { providerIds, reason = 'Documents could not be verified' } = req.body;
+    if (!Array.isArray(providerIds) || providerIds.length === 0) {
+      return res.status(400).json({ success: false, message: 'providerIds array required' });
+    }
+
+    const providers = await prisma.provider.findMany({
+      where: { id: { in: providerIds } },
+      include: { user: true },
+    });
+
+    await prisma.provider.updateMany({
+      where: { id: { in: providerIds } },
+      data: { verificationStatus: 'REJECTED', isVerified: false },
+    });
+
+    for (const p of providers) {
+      smsSvc.sendSMS(p.user.phone, `Your KaziShow application was not approved. Reason: ${reason}. Please reapply with correct documents.`).catch(console.error);
+    }
+
+    console.log(`❌ Bulk rejected ${providers.length} providers`);
+    res.json({ success: true, data: { rejected: providers.length } });
+  } catch (err) {
+    console.error('❌ bulkRejectProviders error:', err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+// ─── CSV Export ───────────────────────────────────────────────────────────────
+
+async function exportData(req, res) {
+  try {
+    const { type = 'bookings', dateFrom, dateTo } = req.query;
+    const COMMISSION_RATE = parseFloat(process.env.COMMISSION_RATE) || 0.10;
+
+    const dateFilter = {};
+    if (dateFrom || dateTo) {
+      dateFilter.createdAt = {};
+      if (dateFrom) dateFilter.createdAt.gte = new Date(dateFrom);
+      if (dateTo) dateFilter.createdAt.lte = new Date(new Date(dateTo).setHours(23, 59, 59));
+    }
+
+    let headers = [];
+    let rows = [];
+
+    if (type === 'bookings') {
+      headers = ['ID', 'Customer', 'Phone', 'Provider', 'Service', 'Status', 'Payment Status', 'Amount (KSh)', 'Date'];
+      const bookings = await prisma.booking.findMany({
+        where: dateFilter,
+        include: {
+          customer: { select: { name: true, phone: true } },
+          provider: { select: { businessName: true, category: true } },
+          service: { select: { name: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 5000,
+      });
+      rows = bookings.map((b) => [
+        b.id, b.customer?.name || '', b.customer?.phone || '',
+        b.provider?.businessName || '', b.service?.name || '',
+        b.status, b.paymentStatus || 'UNPAID', b.totalAmount || 0,
+        new Date(b.createdAt).toLocaleDateString('en-KE'),
+      ]);
+    } else if (type === 'users') {
+      headers = ['ID', 'Name', 'Phone', 'Role', 'Location', 'Active', 'Joined'];
+      const users = await prisma.user.findMany({
+        where: dateFilter,
+        select: { id: true, name: true, phone: true, role: true, location: true, isActive: true, createdAt: true },
+        orderBy: { createdAt: 'desc' },
+        take: 5000,
+      });
+      rows = users.map((u) => [u.id, u.name, u.phone, u.role, u.location || '', u.isActive ? 'Yes' : 'No', new Date(u.createdAt).toLocaleDateString('en-KE')]);
+    } else if (type === 'payments') {
+      headers = ['Booking ID', 'Customer', 'Provider', 'Amount (KSh)', 'Commission (KSh)', 'Provider Payout (KSh)', 'Payment Status', 'Date'];
+      const where = { ...dateFilter, status: 'COMPLETED', totalAmount: { gt: 0 } };
+      const bookings = await prisma.booking.findMany({
+        where,
+        include: {
+          customer: { select: { name: true } },
+          provider: { select: { businessName: true } },
+        },
+        orderBy: { updatedAt: 'desc' },
+        take: 5000,
+      });
+      rows = bookings.map((b) => [
+        b.id, b.customer?.name || '', b.provider?.businessName || '',
+        Math.round(b.totalAmount || 0),
+        Math.round((b.totalAmount || 0) * COMMISSION_RATE),
+        Math.round((b.totalAmount || 0) * (1 - COMMISSION_RATE)),
+        b.paymentStatus || 'UNPAID',
+        new Date(b.updatedAt).toLocaleDateString('en-KE'),
+      ]);
+    } else {
+      return res.status(400).json({ success: false, message: 'Invalid type. Use: bookings, users, payments' });
+    }
+
+    const esc = (v) => `"${String(v).replace(/"/g, '""')}"`;
+    const csv = [headers.map(esc).join(','), ...rows.map((r) => r.map(esc).join(','))].join('\n');
+    const filename = `kazishow-${type}-${new Date().toISOString().split('T')[0]}.csv`;
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(csv);
+  } catch (err) {
+    console.error('❌ exportData error:', err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+// ─── Announcement Broadcast ───────────────────────────────────────────────────
+
+async function broadcastAnnouncement(req, res) {
+  try {
+    const { title, message, target } = req.body;
+    const validTargets = ['ALL_CUSTOMERS', 'ALL_PROVIDERS', 'ALL_USERS'];
+    if (!title?.trim() || !message?.trim()) {
+      return res.status(400).json({ success: false, message: 'title and message are required' });
+    }
+    if (!validTargets.includes(target)) {
+      return res.status(400).json({ success: false, message: `target must be one of: ${validTargets.join(', ')}` });
+    }
+
+    const userFilter = { isActive: true };
+    if (target === 'ALL_CUSTOMERS') userFilter.role = 'CUSTOMER';
+    else if (target === 'ALL_PROVIDERS') userFilter.role = 'PROVIDER';
+    else userFilter.role = { not: 'ADMIN' };
+
+    const users = await prisma.user.findMany({
+      where: userFilter,
+      select: { id: true, phone: true },
+    });
+
+    console.log(`📢 Broadcasting to ${users.length} users (${target}): "${title}"`);
+
+    await prisma.notification.createMany({
+      data: users.map((u) => ({
+        userId: u.id,
+        type: 'SYSTEM',
+        title: title.trim(),
+        body: message.trim(),
+      })),
+      skipDuplicates: true,
+    });
+
+    const phones = users.map((u) => u.phone).filter(Boolean);
+    const BATCH = 50;
+    for (let i = 0; i < phones.length; i += BATCH) {
+      smsSvc.sendSMS(phones.slice(i, i + BATCH), `${title.trim()}: ${message.trim()}`).catch((e) =>
+        console.error('❌ Broadcast SMS batch failed:', e.message)
+      );
+    }
+
+    console.log(`✅ Broadcast complete: ${users.length} notifications, ${phones.length} SMS queued`);
+    res.json({ success: true, data: { notificationsSent: users.length, smsSent: phones.length, target } });
+  } catch (err) {
+    console.error('❌ broadcastAnnouncement error:', err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+// ─── Auto-Suspension ──────────────────────────────────────────────────────────
+
+async function getAutoSuspensionCandidates(req, res) {
+  try {
+    const DISPUTE_THRESHOLD = parseFloat(req.query.disputeThreshold) || 0.30;
+    const INACTIVE_DAYS = parseInt(req.query.inactiveDays) || 30;
+
+    const providers = await prisma.provider.findMany({
+      where: { isVerified: true, user: { isActive: true } },
+      include: {
+        user: { select: { id: true, name: true, phone: true } },
+        bookings: {
+          select: { status: true, updatedAt: true },
+          orderBy: { updatedAt: 'desc' },
+          take: 100,
+        },
+        _count: { select: { bookings: true } },
+      },
+    });
+
+    const candidates = [];
+
+    for (const p of providers) {
+      const reasons = [];
+      const totalBookings = p._count.bookings;
+      const disputed = p.bookings.filter((b) => b.status === 'DISPUTED').length;
+      const disputeRate = totalBookings > 0 ? disputed / totalBookings : 0;
+
+      const lastBooking = p.bookings[0];
+      const daysSinceActivity = lastBooking
+        ? Math.floor((Date.now() - new Date(lastBooking.updatedAt).getTime()) / (1000 * 60 * 60 * 24))
+        : INACTIVE_DAYS + 1;
+
+      if (disputeRate >= DISPUTE_THRESHOLD && totalBookings >= 3) {
+        reasons.push(`High dispute rate: ${Math.round(disputeRate * 100)}%`);
+      }
+      if (daysSinceActivity >= INACTIVE_DAYS) {
+        reasons.push(`No activity for ${daysSinceActivity} days`);
+      }
+
+      if (reasons.length > 0) {
+        candidates.push({
+          id: p.id,
+          businessName: p.businessName,
+          category: p.category,
+          userId: p.userId,
+          userName: p.user.name,
+          phone: p.user.phone,
+          totalBookings,
+          disputed,
+          disputeRate: Math.round(disputeRate * 100),
+          daysSinceActivity,
+          reasons,
+        });
+      }
+    }
+
+    candidates.sort((a, b) => b.reasons.length - a.reasons.length || b.disputeRate - a.disputeRate);
+    res.json({ success: true, data: candidates });
+  } catch (err) {
+    console.error('❌ getAutoSuspensionCandidates error:', err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+async function runAutoSuspension(req, res) {
+  try {
+    const { providerIds, action = 'suspend' } = req.body;
+    if (!Array.isArray(providerIds) || providerIds.length === 0) {
+      return res.status(400).json({ success: false, message: 'providerIds array required' });
+    }
+
+    const providers = await prisma.provider.findMany({
+      where: { id: { in: providerIds } },
+      include: { user: true },
+    });
+
+    if (action === 'suspend') {
+      await prisma.user.updateMany({
+        where: { id: { in: providers.map((p) => p.userId) } },
+        data: { isActive: false },
+      });
+      for (const p of providers) {
+        smsSvc.sendSMS(p.user.phone, `Your KaziShow account has been suspended due to policy violations. Contact support to appeal.`).catch(console.error);
+        prisma.notification.create({
+          data: { userId: p.userId, type: 'SYSTEM', title: 'Account Suspended', body: 'Your account has been suspended. Contact KaziShow support if you believe this is an error.' },
+        }).catch(console.error);
+      }
+      console.log(`🚫 Auto-suspended ${providers.length} providers`);
+    } else if (action === 'warn') {
+      for (const p of providers) {
+        smsSvc.sendSMS(p.user.phone, `KaziShow Warning: Your account has been flagged for review. Please improve your service quality to avoid suspension.`).catch(console.error);
+        prisma.notification.create({
+          data: { userId: p.userId, type: 'SYSTEM', title: 'Account Warning ⚠️', body: 'Your account has been flagged for review. Improve your service quality to avoid suspension.' },
+        }).catch(console.error);
+      }
+      console.log(`⚠️ Warned ${providers.length} providers`);
+    }
+
+    res.json({ success: true, data: { action, affected: providers.length, providers: providers.map((p) => ({ id: p.id, businessName: p.businessName })) } });
+  } catch (err) {
+    console.error('❌ runAutoSuspension error:', err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
 // ─── Global search ────────────────────────────────────────────────────────────
 
 async function adminSearch(req, res) {
@@ -671,6 +972,8 @@ module.exports = {
   getPendingProviders,
   approveProvider,
   rejectProvider,
+  bulkApproveProviders,
+  bulkRejectProviders,
   getUsers,
   suspendUser,
   deleteUser,
@@ -685,6 +988,10 @@ module.exports = {
   getPendingPortfolioVideos,
   approvePortfolioVideo,
   rejectPortfolioVideo,
+  exportData,
+  broadcastAnnouncement,
+  getAutoSuspensionCandidates,
+  runAutoSuspension,
   adminSearch,
   adminBadges,
 };

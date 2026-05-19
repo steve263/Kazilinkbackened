@@ -122,7 +122,8 @@ const { initReminders } = require('./services/reminder.service');
 
 // Ensure new columns exist (safe to run multiple times — IF NOT EXISTS guard)
 const _startupMigrations = [
-  `ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "avgResponseMinutes" INTEGER`,
+  `ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "avgResponseMinutes"   INTEGER`,
+  `ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "providerWorkPhotos"   TEXT NOT NULL DEFAULT '[]'`,
   `ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "isBusy" BOOLEAN NOT NULL DEFAULT false`,
   `ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "busySince" TIMESTAMP(3)`,
   `ALTER TABLE "Booking"  ADD COLUMN IF NOT EXISTS "acceptedAt" TIMESTAMP(3)`,

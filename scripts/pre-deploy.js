@@ -62,6 +62,7 @@ async function applyDirectMigrations() {
       `ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "isBusy"               BOOLEAN          NOT NULL DEFAULT false`,
       `ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "busySince"            TIMESTAMP(3)`,
       `ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "avgResponseMinutes"   INTEGER`,
+      `ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "providerWorkPhotos"   TEXT            NOT NULL DEFAULT '[]'`,
     ];
 
     for (const sql of providerCols) {

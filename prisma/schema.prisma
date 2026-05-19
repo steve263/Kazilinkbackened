@@ -85,6 +85,7 @@ model Provider {
   totalEarned        Float              @default(0)
   walletBalance      Float              @default(0)
   avgResponseMinutes Int?
+  providerWorkPhotos String             @default("[]")
   busySince          DateTime?
   isBusy             Boolean            @default(false)
   bookings           Booking[]          @relation("ProviderBookings")

@@ -79,21 +79,33 @@ async function getProvider(req, res) {
       return res.status(404).json({ success: false, message: 'Provider not found' });
     }
 
-    // Collect before/after photos from completed bookings (raw query — safe if column not yet migrated)
+    // Collect before/after photos from two sources (raw queries — safe if columns not yet migrated)
     let workPhotos = [];
     try {
+      // Source 1: photos uploaded directly by the provider (providerWorkPhotos field)
+      const providerRow = await prisma.$queryRawUnsafe(
+        `SELECT "providerWorkPhotos" FROM "Provider" WHERE id = $1`,
+        provider.id
+      );
+      const directPhotos = providerRow[0]?.providerWorkPhotos
+        ? (() => { try { return JSON.parse(providerRow[0].providerWorkPhotos); } catch { return []; } })()
+        : [];
+
+      // Source 2: photos uploaded during job completion (Booking.jobPhotos)
       const rows = await prisma.$queryRawUnsafe(
         `SELECT "jobPhotos" FROM "Booking"
          WHERE "providerId" = $1 AND status = 'COMPLETED' AND "jobPhotos" != '[]'
          ORDER BY "createdAt" DESC LIMIT 50`,
         provider.id
       );
-      workPhotos = rows.flatMap((b) => {
+      const bookingPhotos = rows.flatMap((b) => {
         try { return JSON.parse(b.jobPhotos || '[]'); } catch { return []; }
       }).filter(Boolean);
+
+      workPhotos = [...directPhotos, ...bookingPhotos].filter(Boolean);
     } catch {}
 
-    res.json({ success: true, data: { ...provider, workPhotos } });
+    res.json({ success: true, data: { ...provider, workPhotos, providerWorkPhotos: provider.providerWorkPhotos || '[]' } });
   } catch (err) {
     console.error('❌ getProvider error:', err.message);
     res.status(500).json({ success: false, message: err.message });
@@ -112,7 +124,7 @@ async function updateProvider(req, res) {
     const {
       businessName, description, workingHoursStart, workingHoursEnd,
       radiusKm, minJobValue, profileImage, coverImage, portfolioPhotos,
-      skills, yearsExperience, education, location,
+      skills, yearsExperience, education, location, providerWorkPhotos,
     } = req.body;
 
     const [updated] = await prisma.$transaction([
@@ -128,6 +140,7 @@ async function updateProvider(req, res) {
           ...(profileImage && { profileImage }),
           ...(coverImage && { coverImage }),
           ...(Array.isArray(portfolioPhotos) && { portfolioPhotos }),
+          ...(providerWorkPhotos !== undefined && { providerWorkPhotos: Array.isArray(providerWorkPhotos) ? JSON.stringify(providerWorkPhotos) : providerWorkPhotos }),
           ...(Array.isArray(skills) && { skills }),
           ...(yearsExperience !== undefined && { yearsExperience: yearsExperience || null }),
           ...(education !== undefined && { education: education || null }),

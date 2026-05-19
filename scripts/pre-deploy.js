@@ -144,6 +144,18 @@ async function applyDirectMigrations() {
 
     console.log('[pre-deploy] OutstandingCommission columns ready');
 
+    // ── AppSettings table ──────────────────────────────────────────────────────
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS "AppSettings" (
+        "id"        TEXT         NOT NULL,
+        "settings"  TEXT         NOT NULL,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT NOW(),
+        "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT NOW(),
+        CONSTRAINT "AppSettings_pkey" PRIMARY KEY ("id")
+      );
+    `);
+    console.log('[pre-deploy] AppSettings table ready');
+
   } catch (err) {
     console.error('[pre-deploy] Direct migration error (non-fatal):', err.message);
   } finally {

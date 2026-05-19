@@ -128,6 +128,7 @@ const _startupMigrations = [
   `ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "busySince" TIMESTAMP(3)`,
   `ALTER TABLE "Booking"  ADD COLUMN IF NOT EXISTS "acceptedAt" TIMESTAMP(3)`,
   `ALTER TABLE "Booking"  ADD COLUMN IF NOT EXISTS "jobPhotos"  TEXT NOT NULL DEFAULT '[]'`,
+  `CREATE TABLE IF NOT EXISTS "AppSettings" ("id" TEXT NOT NULL, "settings" TEXT NOT NULL, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT NOW(), "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT NOW(), CONSTRAINT "AppSettings_pkey" PRIMARY KEY ("id"))`,
 ];
 Promise.all(_startupMigrations.map(sql => _prisma.$executeRawUnsafe(sql)))
   .then(() => console.log('[startup] Column migrations applied'))

@@ -61,6 +61,10 @@ router.post('/broadcast',                     ...adminOnly, ctrl.broadcastAnnoun
 router.get('/auto-suspension/candidates',     ...adminOnly, ctrl.getAutoSuspensionCandidates);
 router.post('/auto-suspension/run',           ...adminOnly, ctrl.runAutoSuspension);
 
+// App settings
+router.get('/settings',                       ...adminOnly, ctrl.getSettings);
+router.put('/settings',                       ...adminOnly, ctrl.updateSettings);
+
 // Verification document review
 router.get('/verification',                   ...adminOnly, ctrl.getVerificationRequests);
 router.get('/verification/:id',               ...adminOnly, ctrl.getVerificationDetail);

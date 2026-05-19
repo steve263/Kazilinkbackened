@@ -1081,6 +1081,82 @@ async function extendSubscription(req, res) {
   }
 }
 
+// ─── App Settings ─────────────────────────────────────────────────────────────
+
+const DEFAULT_SETTINGS = {
+  commissionRate: 10,
+  cashCommissionRate: 10,
+  trialDays: 14,
+  starterPrice: 800,
+  growthPrice: 1200,
+  premiumPrice: 1500,
+  maxBookingsPerDay: 10,
+  autoCancelHours: 24,
+  autoReleaseHours: 24,
+  cancellationRefundHours: 2,
+  maintenanceMode: false,
+  newRegistrationsOpen: true,
+  appName: 'KaziShow',
+  supportPhone: '0795542312',
+  supportPhone2: '0731421635',
+  supportEmail: 'support@kazishow.co.ke',
+  whatsappNumber: '0795542312',
+  smsEnabled: true,
+  smsWelcomeMessage: "Welcome to KaziShow! Kenya's #1 service platform. Find and book trusted providers near you.",
+  pushEnabled: true,
+  emailEnabled: true,
+  defaultCity: 'Nairobi',
+  defaultCountry: 'Kenya',
+  currency: 'KSh',
+};
+
+async function getSettings(req, res) {
+  try {
+    const row = await prisma.appSettings.findFirst().catch(() => null);
+    if (!row) {
+      await prisma.appSettings.create({ data: { settings: JSON.stringify(DEFAULT_SETTINGS) } }).catch(() => null);
+      return res.json({ success: true, data: DEFAULT_SETTINGS });
+    }
+    const parsed = JSON.parse(row.settings);
+    res.json({ success: true, data: { ...DEFAULT_SETTINGS, ...parsed } });
+  } catch (err) {
+    res.json({ success: true, data: DEFAULT_SETTINGS });
+  }
+}
+
+async function updateSettings(req, res) {
+  try {
+    const newSettings = req.body;
+
+    if (newSettings.commissionRate < 0 || newSettings.commissionRate > 50) {
+      return res.status(400).json({ success: false, message: 'Commission rate must be between 0 and 50 percent' });
+    }
+    if (newSettings.starterPrice < 100 || newSettings.starterPrice > 10000) {
+      return res.status(400).json({ success: false, message: 'Starter price must be between KSh 100 and KSh 10,000' });
+    }
+
+    const existing = await prisma.appSettings.findFirst().catch(() => null);
+    if (existing) {
+      await prisma.appSettings.update({
+        where: { id: existing.id },
+        data: { settings: JSON.stringify(newSettings), updatedAt: new Date() },
+      });
+    } else {
+      await prisma.appSettings.create({ data: { settings: JSON.stringify(newSettings) } });
+    }
+
+    if (newSettings.commissionRate !== undefined) {
+      process.env.COMMISSION_RATE = (newSettings.commissionRate / 100).toString();
+    }
+
+    console.log('✅ App settings updated by admin');
+    res.json({ success: true, data: { message: 'Settings saved successfully' } });
+  } catch (err) {
+    console.error('❌ updateSettings error:', err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
 // ─── Verification Document Review ────────────────────────────────────────────
 
 async function getVerificationRequests(req, res) {
@@ -1261,4 +1337,6 @@ module.exports = {
   getVerificationDetail,
   approveVerification,
   rejectVerification,
+  getSettings,
+  updateSettings,
 };

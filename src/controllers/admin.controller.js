@@ -1,6 +1,8 @@
 const prisma = require('../config/db');
 const smsSvc = require('../services/sms.service');
 const emailSvc = require('../services/email.service');
+const notificationSvc = require('../services/notification.service');
+const firebaseSvc = require('../services/firebase.service');
 
 // ─── Stats ────────────────────────────────────────────────────────────────────
 
@@ -1079,6 +1081,151 @@ async function extendSubscription(req, res) {
   }
 }
 
+// ─── Verification Document Review ────────────────────────────────────────────
+
+async function getVerificationRequests(req, res) {
+  try {
+    const { status } = req.query;
+    const where = {};
+    if (status) where.status = status;
+
+    const [requests, pending, approved, rejected] = await Promise.all([
+      prisma.verificationRequest.findMany({
+        where,
+        include: {
+          user: {
+            select: {
+              id: true, name: true, phone: true, email: true,
+              profilePhoto: true, createdAt: true,
+              provider: {
+                select: { id: true, businessName: true, category: true, isVerified: true },
+              },
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+      prisma.verificationRequest.count({ where: { status: 'PENDING' } }),
+      prisma.verificationRequest.count({ where: { status: 'APPROVED' } }),
+      prisma.verificationRequest.count({ where: { status: 'REJECTED' } }),
+    ]);
+
+    res.json({ success: true, data: { requests, counts: { pending, approved, rejected } } });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+async function getVerificationDetail(req, res) {
+  try {
+    const request = await prisma.verificationRequest.findUnique({
+      where: { id: req.params.id },
+      include: {
+        user: {
+          include: {
+            provider: {
+              include: {
+                services: { take: 5 },
+                _count: { select: { bookings: true, reviews: true } },
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!request) return res.status(404).json({ success: false, message: 'Not found' });
+    res.json({ success: true, data: request });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+async function approveVerification(req, res) {
+  try {
+    const request = await prisma.verificationRequest.findUnique({
+      where: { id: req.params.id },
+      include: { user: { include: { provider: true } } },
+    });
+    if (!request) return res.status(404).json({ success: false, message: 'Not found' });
+
+    await prisma.verificationRequest.update({
+      where: { id: req.params.id },
+      data: { status: 'APPROVED' },
+    });
+
+    const provider = request.user?.provider;
+    if (provider) {
+      await prisma.provider.update({
+        where: { id: provider.id },
+        data: { isVerified: true },
+      });
+    }
+
+    notificationSvc.createNotification({
+      userId: request.userId,
+      type: 'SYSTEM',
+      title: '✅ Verification Approved!',
+      body: `Congratulations ${request.user.name}! Your KaziShow account has been verified. You now have a Verified badge on your profile.`,
+    }).catch(console.error);
+
+    smsSvc.sendSMS(
+      request.user.phone,
+      `KaziShow: Congratulations ${request.user.name}! Your account is now VERIFIED ✅. You have a verified badge on your profile. Customers can now find and book you with confidence!`
+    ).catch(console.error);
+
+    if (request.user.deviceToken) {
+      firebaseSvc.sendPushNotification({
+        deviceToken: request.user.deviceToken,
+        title: '✅ Account Verified!',
+        body: 'Your KaziShow account is now verified. You have a verified badge!',
+        data: { url: '/provider/profile' },
+      }).catch(console.error);
+    }
+
+    console.log(`✅ Verification approved: ${provider?.businessName || request.user.name}`);
+    res.json({ success: true, data: { message: 'Provider verified successfully' } });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+async function rejectVerification(req, res) {
+  try {
+    const { reason } = req.body;
+    if (!reason || reason.trim().length < 5) {
+      return res.status(400).json({ success: false, message: 'Please provide a rejection reason' });
+    }
+
+    const request = await prisma.verificationRequest.findUnique({
+      where: { id: req.params.id },
+      include: { user: { include: { provider: true } } },
+    });
+    if (!request) return res.status(404).json({ success: false, message: 'Not found' });
+
+    await prisma.verificationRequest.update({
+      where: { id: req.params.id },
+      data: { status: 'REJECTED', adminNote: reason },
+    });
+
+    notificationSvc.createNotification({
+      userId: request.userId,
+      type: 'SYSTEM',
+      title: '❌ Verification Rejected',
+      body: `Your verification was not approved. Reason: ${reason}. Please resubmit with correct documents.`,
+    }).catch(console.error);
+
+    smsSvc.sendSMS(
+      request.user.phone,
+      `KaziShow: Your verification was not approved. Reason: ${reason}. Please open the app and resubmit your documents.`
+    ).catch(console.error);
+
+    console.log(`❌ Verification rejected: ${request.user?.provider?.businessName || request.user.name} — ${reason}`);
+    res.json({ success: true, data: { message: 'Verification rejected' } });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
 module.exports = {
   getStats,
   getPendingProviders,
@@ -1110,4 +1257,8 @@ module.exports = {
   getAdminSubscriptionStats,
   waiveSubscription,
   extendSubscription,
+  getVerificationRequests,
+  getVerificationDetail,
+  approveVerification,
+  rejectVerification,
 };

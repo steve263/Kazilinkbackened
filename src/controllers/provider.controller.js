@@ -79,7 +79,18 @@ async function getProvider(req, res) {
       return res.status(404).json({ success: false, message: 'Provider not found' });
     }
 
-    res.json({ success: true, data: provider });
+    // Collect before/after photos from completed bookings
+    const completedWithPhotos = await prisma.booking.findMany({
+      where: { providerId: provider.id, status: 'COMPLETED', NOT: { jobPhotos: '[]' } },
+      select: { jobPhotos: true },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
+    const workPhotos = completedWithPhotos.flatMap((b) => {
+      try { return JSON.parse(b.jobPhotos || '[]'); } catch { return []; }
+    }).filter(Boolean);
+
+    res.json({ success: true, data: { ...provider, workPhotos } });
   } catch (err) {
     console.error('❌ getProvider error:', err.message);
     res.status(500).json({ success: false, message: err.message });

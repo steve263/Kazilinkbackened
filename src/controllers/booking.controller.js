@@ -315,6 +315,10 @@ async function updateStatus(req, res) {
     const updateData = { status: status.toUpperCase() };
     if (status.toUpperCase() === 'COMPLETED') {
       updateData.completedByProvider = new Date();
+      const photos = req.body.photos;
+      if (Array.isArray(photos) && photos.length > 0) {
+        updateData.jobPhotos = JSON.stringify(photos);
+      }
     }
 
     const updated = await prisma.booking.update({
@@ -354,6 +358,8 @@ async function updateStatus(req, res) {
       if (isEscrow) {
         // Emit real-time popup to customer instantly
         const commissionRate = parseFloat(process.env.COMMISSION_RATE) || 0.10;
+        let parsedPhotos = [];
+        try { parsedPhotos = JSON.parse(updateData.jobPhotos || booking.jobPhotos || '[]'); } catch {}
         socketSvc.emitJobCompletionRequest(booking.customerId, {
           bookingId: booking.id,
           providerName: booking.provider.businessName,
@@ -362,6 +368,7 @@ async function updateStatus(req, res) {
           amount: booking.totalAmount,
           providerAmount: Math.round(booking.totalAmount * (1 - commissionRate)),
           message: `${booking.provider.businessName} says the job is complete!`,
+          photos: parsedPhotos,
         });
         console.log(`📨 Job completion popup sent to customer ${booking.customerId}`);
 

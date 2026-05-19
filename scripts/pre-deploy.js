@@ -35,6 +35,7 @@ async function applyDirectMigrations() {
       `ALTER TABLE "Booking" ADD COLUMN IF NOT EXISTS "cashPaid"            BOOLEAN         NOT NULL DEFAULT false`,
       `ALTER TABLE "Booking" ADD COLUMN IF NOT EXISTS "cashPaidAt"          TIMESTAMP(3)`,
       `ALTER TABLE "Booking" ADD COLUMN IF NOT EXISTS "acceptedAt"          TIMESTAMP(3)`,
+      `ALTER TABLE "Booking" ADD COLUMN IF NOT EXISTS "jobPhotos"           TEXT            NOT NULL DEFAULT '[]'`,
     ];
 
     for (const sql of bookingCols) {

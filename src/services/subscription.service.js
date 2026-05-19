@@ -54,17 +54,14 @@ async function createFreeTrial(providerId) {
     const trialEndDate = new Date();
     trialEndDate.setDate(trialEndDate.getDate() + 14);
 
-    const subscription = await prisma.subscription.upsert({
-      where: { providerId },
-      create: {
-        providerId,
-        plan: 'STARTER',
-        status: 'TRIAL',
-        trialStartDate,
-        trialEndDate,
-      },
-      update: {},
-    });
+    // Use raw upsert to avoid enum cast error — insert if not exists, leave as-is if exists
+    await prisma.$executeRawUnsafe(
+      `INSERT INTO "Subscription" (id, "providerId", plan, status, "trialStartDate", "trialEndDate", "createdAt", "updatedAt")
+       VALUES (gen_random_uuid(), $1, 'STARTER', 'TRIAL', $2, $3, NOW(), NOW())
+       ON CONFLICT ("providerId") DO NOTHING`,
+      providerId, trialStartDate, trialEndDate
+    );
+    const subscription = await prisma.subscription.findUnique({ where: { providerId } });
 
     console.log(`🎁 Free trial created for provider ${providerId} — expires ${trialEndDate.toDateString()}`);
     return subscription;
@@ -130,18 +127,13 @@ async function activateSubscription(providerId, plan, mpesaRef, phone) {
     const periodEnd = new Date();
     periodEnd.setDate(periodEnd.getDate() + 30);
 
-    // Update subscription to ACTIVE — payment record is updated by the caller (callback)
-    const subscription = await prisma.subscription.update({
+    // Update subscription to ACTIVE — use raw SQL to avoid enum cast error on Railway
+    await prisma.$executeRawUnsafe(
+      `UPDATE "Subscription" SET status = 'ACTIVE', plan = $1, "currentPeriodStart" = $2, "currentPeriodEnd" = $3, amount = $4, "mpesaRef" = $5, "updatedAt" = $6 WHERE "providerId" = $7`,
+      plan, now, periodEnd, PLAN_PRICES[plan], mpesaRef, now, providerId
+    );
+    const subscription = await prisma.subscription.findUnique({
       where: { providerId },
-      data: {
-        plan,
-        status: 'ACTIVE',
-        currentPeriodStart: now,
-        currentPeriodEnd: periodEnd,
-        amount: PLAN_PRICES[plan],
-        mpesaRef,
-        updatedAt: now,
-      },
       include: { provider: { include: { user: true } } },
     });
 
@@ -293,14 +285,14 @@ async function sendExpiryReminders() {
     }
 
     // ── EXPIRE OVERDUE RECORDS ────────────────────────────────────────────────
-    await prisma.subscription.updateMany({
-      where: { status: 'TRIAL', trialEndDate: { lt: now } },
-      data: { status: 'EXPIRED' },
-    });
-    await prisma.subscription.updateMany({
-      where: { status: 'ACTIVE', currentPeriodEnd: { lt: now } },
-      data: { status: 'EXPIRED' },
-    });
+    await prisma.$executeRawUnsafe(
+      `UPDATE "Subscription" SET status = 'EXPIRED' WHERE status = 'TRIAL' AND "trialEndDate" < $1`,
+      now
+    );
+    await prisma.$executeRawUnsafe(
+      `UPDATE "Subscription" SET status = 'EXPIRED' WHERE status = 'ACTIVE' AND "currentPeriodEnd" < $1`,
+      now
+    );
 
     console.log('✅ Subscription expiry check complete');
   } catch (err) {

@@ -1039,11 +1039,16 @@ async function waiveSubscription(req, res) {
     const validPlan = ['STARTER', 'GROWTH', 'PREMIUM'].includes(plan) ? plan : 'STARTER';
     const now = new Date();
     const periodEnd = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
-    const sub = await prisma.subscription.update({
+    // Use raw SQL — Prisma ORM update casts to the enum type which may not exist in DB
+    await prisma.$executeRawUnsafe(
+      `UPDATE "Subscription" SET status = 'ACTIVE', plan = $1, "currentPeriodStart" = $2, "currentPeriodEnd" = $3, "updatedAt" = $4 WHERE id = $5`,
+      validPlan, now, periodEnd, now, req.params.id
+    );
+    const sub = await prisma.subscription.findUnique({
       where: { id: req.params.id },
-      data: { status: 'ACTIVE', plan: validPlan, currentPeriodStart: now, currentPeriodEnd: periodEnd, updatedAt: now },
       include: { provider: { include: { user: true } } },
     });
+    if (!sub) return res.status(404).json({ success: false, message: 'Subscription not found' });
     console.log(`✅ Admin waived subscription for ${sub.provider.businessName} (${validPlan}) — reason: ${reason}`);
     res.json({ success: true, data: sub });
   } catch (err) {
@@ -1058,9 +1063,13 @@ async function extendSubscription(req, res) {
     if (!sub) return res.status(404).json({ success: false, message: 'Subscription not found' });
     const base = sub.currentPeriodEnd && new Date(sub.currentPeriodEnd) > new Date() ? new Date(sub.currentPeriodEnd) : new Date();
     const newEnd = new Date(base.getTime() + Number(days) * 24 * 60 * 60 * 1000);
-    const updated = await prisma.subscription.update({
+    // Use raw SQL — Prisma ORM update casts to the enum type which may not exist in DB
+    await prisma.$executeRawUnsafe(
+      `UPDATE "Subscription" SET status = 'ACTIVE', "currentPeriodEnd" = $1, "updatedAt" = $2 WHERE id = $3`,
+      newEnd, new Date(), req.params.id
+    );
+    const updated = await prisma.subscription.findUnique({
       where: { id: req.params.id },
-      data: { status: 'ACTIVE', currentPeriodEnd: newEnd, updatedAt: new Date() },
       include: { provider: { include: { user: true } } },
     });
     console.log(`✅ Admin extended subscription for ${updated.provider.businessName} by ${days} days → ${newEnd.toDateString()}`);

@@ -61,6 +61,12 @@ router.post('/broadcast',                     ...adminOnly, ctrl.broadcastAnnoun
 router.get('/auto-suspension/candidates',     ...adminOnly, ctrl.getAutoSuspensionCandidates);
 router.post('/auto-suspension/run',           ...adminOnly, ctrl.runAutoSuspension);
 
+// Subscription management
+router.get('/subscriptions',              ...adminOnly, ctrl.getAdminSubscriptions);
+router.get('/subscriptions/stats',        ...adminOnly, ctrl.getAdminSubscriptionStats);
+router.put('/subscriptions/:id/waive',    ...adminOnly, ctrl.waiveSubscription);
+router.put('/subscriptions/:id/extend',   ...adminOnly, ctrl.extendSubscription);
+
 // ShowReel management (delete only — no approval flow)
 router.get('/videos',                         ...adminOnly, videoCtrl.adminGetVideos);
 router.get('/videos/reported',                ...adminOnly, (req, res, next) => { req.query.reported = 'true'; next(); }, videoCtrl.adminGetVideos);

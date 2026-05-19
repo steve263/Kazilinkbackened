@@ -942,6 +942,7 @@ async function adminBadges(req, res) {
       pendingWithdrawals,
       disputes,
       pendingAppeals,
+      expiredSubs,
     ] = await Promise.all([
       prisma.provider.count({ where: { status: 'PENDING' } }),
       prisma.providerCertificate.count({ where: { status: 'PENDING' } }).catch(() => 0),
@@ -951,6 +952,7 @@ async function adminBadges(req, res) {
       prisma.withdrawal.count({ where: { status: 'PENDING' } }).catch(() => 0),
       prisma.booking.count({ where: { status: 'DISPUTED' } }),
       prisma.appeal.count({ where: { status: 'PENDING' } }).catch(() => 0),
+      prisma.subscription.count({ where: { status: 'EXPIRED' } }).catch(() => 0),
     ]);
 
     res.json({
@@ -960,8 +962,109 @@ async function adminBadges(req, res) {
         bookings:  disputes,
         withdrawals: pendingWithdrawals,
         appeals:   pendingAppeals,
+        expiredSubs,
       },
     });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+// ─── Subscription Management ──────────────────────────────────────────────────
+
+async function getAdminSubscriptions(req, res) {
+  try {
+    const { status, plan, search, page = 1, limit = 20 } = req.query;
+    const where = {};
+    if (status) where.status = status;
+    if (plan) where.plan = plan;
+    if (search) {
+      where.OR = [
+        { provider: { businessName: { contains: search, mode: 'insensitive' } } },
+        { provider: { user: { name: { contains: search, mode: 'insensitive' } } } },
+        { provider: { user: { phone: { contains: search } } } },
+      ];
+    }
+    const [subscriptions, total] = await Promise.all([
+      prisma.subscription.findMany({
+        where,
+        include: {
+          provider: { include: { user: { select: { name: true, phone: true, email: true } } } },
+          payments: { orderBy: { createdAt: 'desc' }, take: 3 },
+        },
+        orderBy: { updatedAt: 'desc' },
+        skip: (Number(page) - 1) * Number(limit),
+        take: Number(limit),
+      }),
+      prisma.subscription.count({ where }),
+    ]);
+    res.json({ success: true, data: subscriptions, total, page: Number(page), pages: Math.ceil(total / Number(limit)) });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+async function getAdminSubscriptionStats(req, res) {
+  try {
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const [totalTrial, totalActive, totalExpired, starterCount, growthCount, premiumCount, monthlyRevenue, totalRevenue] = await Promise.all([
+      prisma.subscription.count({ where: { status: 'TRIAL' } }),
+      prisma.subscription.count({ where: { status: 'ACTIVE' } }),
+      prisma.subscription.count({ where: { status: 'EXPIRED' } }),
+      prisma.subscription.count({ where: { status: 'ACTIVE', plan: 'STARTER' } }),
+      prisma.subscription.count({ where: { status: 'ACTIVE', plan: 'GROWTH' } }),
+      prisma.subscription.count({ where: { status: 'ACTIVE', plan: 'PREMIUM' } }),
+      prisma.subscriptionPayment.aggregate({ where: { status: 'PAID', paidAt: { gte: monthStart } }, _sum: { amount: true } }).catch(() => ({ _sum: { amount: 0 } })),
+      prisma.subscriptionPayment.aggregate({ where: { status: 'PAID' }, _sum: { amount: true } }).catch(() => ({ _sum: { amount: 0 } })),
+    ]);
+    res.json({
+      success: true,
+      data: {
+        totalTrial, totalActive, totalExpired,
+        starterCount, growthCount, premiumCount,
+        monthlyRevenue: monthlyRevenue._sum.amount || 0,
+        totalRevenue: totalRevenue._sum.amount || 0,
+        projectedRevenue: starterCount * 800 + growthCount * 1200 + premiumCount * 1500,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+async function waiveSubscription(req, res) {
+  try {
+    const { reason = 'Admin waiver', plan = 'STARTER' } = req.body;
+    const validPlan = ['STARTER', 'GROWTH', 'PREMIUM'].includes(plan) ? plan : 'STARTER';
+    const now = new Date();
+    const periodEnd = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    const sub = await prisma.subscription.update({
+      where: { id: req.params.id },
+      data: { status: 'ACTIVE', plan: validPlan, currentPeriodStart: now, currentPeriodEnd: periodEnd, updatedAt: now },
+      include: { provider: { include: { user: true } } },
+    });
+    console.log(`✅ Admin waived subscription for ${sub.provider.businessName} (${validPlan}) — reason: ${reason}`);
+    res.json({ success: true, data: sub });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+async function extendSubscription(req, res) {
+  try {
+    const { days = 30 } = req.body;
+    const sub = await prisma.subscription.findUnique({ where: { id: req.params.id } });
+    if (!sub) return res.status(404).json({ success: false, message: 'Subscription not found' });
+    const base = sub.currentPeriodEnd && new Date(sub.currentPeriodEnd) > new Date() ? new Date(sub.currentPeriodEnd) : new Date();
+    const newEnd = new Date(base.getTime() + Number(days) * 24 * 60 * 60 * 1000);
+    const updated = await prisma.subscription.update({
+      where: { id: req.params.id },
+      data: { status: 'ACTIVE', currentPeriodEnd: newEnd, updatedAt: new Date() },
+      include: { provider: { include: { user: true } } },
+    });
+    console.log(`✅ Admin extended subscription for ${updated.provider.businessName} by ${days} days → ${newEnd.toDateString()}`);
+    res.json({ success: true, data: updated });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -994,4 +1097,8 @@ module.exports = {
   runAutoSuspension,
   adminSearch,
   adminBadges,
+  getAdminSubscriptions,
+  getAdminSubscriptionStats,
+  waiveSubscription,
+  extendSubscription,
 };

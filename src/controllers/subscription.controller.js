@@ -97,15 +97,26 @@ async function initiateSubscription(req, res) {
 async function subscriptionCallback(req, res) {
   try {
     const { Body } = req.body;
+
+    // Malformed or empty callback — acknowledge and exit
+    if (!Body || !Body.stkCallback) {
+      return res.json({ ResultCode: 0, ResultDesc: 'Accepted' });
+    }
+
     const { stkCallback } = Body;
     const { ResultCode, CallbackMetadata, CheckoutRequestID } = stkCallback;
+
+    console.log(`💳 Subscription callback: ResultCode=${ResultCode} CheckoutRequestID=${CheckoutRequestID}`);
 
     if (ResultCode === 0) {
       const items = CallbackMetadata?.Item || [];
       const mpesaRef = items.find(i => i.Name === 'MpesaReceiptNumber')?.Value;
-      const amount = items.find(i => i.Name === 'Amount')?.Value;
-      const phone = items.find(i => i.Name === 'PhoneNumber')?.Value?.toString();
+      const amount   = items.find(i => i.Name === 'Amount')?.Value;
+      const phone    = items.find(i => i.Name === 'PhoneNumber')?.Value?.toString();
 
+      console.log(`✅ Payment confirmed: ${mpesaRef} — KSh ${amount}`);
+
+      // Find the pending payment record saved during initiation
       const payment = await prisma.subscriptionPayment.findFirst({
         where: { mpesaRef: CheckoutRequestID },
         include: { subscription: { include: { provider: true } } },
@@ -116,15 +127,21 @@ async function subscriptionCallback(req, res) {
         if (amount >= 1500) plan = 'PREMIUM';
         else if (amount >= 1200) plan = 'GROWTH';
 
+        // Activate subscription (updates Subscription row, sends SMS + notification)
         await subSvc.activateSubscription(payment.subscription.providerId, plan, mpesaRef, phone);
 
+        // Mark the existing pending payment as paid
         await prisma.subscriptionPayment.update({
           where: { id: payment.id },
           data: { status: 'PAID', mpesaRef, paidAt: new Date() },
         });
 
-        console.log(`✅ Subscription payment confirmed: ${mpesaRef} — ${plan} — KSh ${amount}`);
+        console.log(`✅ Subscription activated: provider=${payment.subscription.providerId} plan=${plan}`);
+      } else {
+        console.log(`⚠️ No pending payment found for CheckoutRequestID: ${CheckoutRequestID}`);
       }
+    } else {
+      console.log(`❌ Payment failed or cancelled: ResultCode=${ResultCode}`);
     }
 
     res.json({ ResultCode: 0, ResultDesc: 'Accepted' });

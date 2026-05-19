@@ -125,50 +125,48 @@ async function getDaysRemaining(providerId) {
 }
 
 async function activateSubscription(providerId, plan, mpesaRef, phone) {
-  const now = new Date();
-  const periodEnd = new Date();
-  periodEnd.setDate(periodEnd.getDate() + 30);
+  try {
+    const now = new Date();
+    const periodEnd = new Date();
+    periodEnd.setDate(periodEnd.getDate() + 30);
 
-  const subscription = await prisma.subscription.update({
-    where: { providerId },
-    data: {
-      plan,
-      status: 'ACTIVE',
-      currentPeriodStart: now,
-      currentPeriodEnd: periodEnd,
-      amount: PLAN_PRICES[plan],
-      mpesaRef,
-    },
-    include: { provider: { include: { user: true } } },
-  });
+    // Update subscription to ACTIVE — payment record is updated by the caller (callback)
+    const subscription = await prisma.subscription.update({
+      where: { providerId },
+      data: {
+        plan,
+        status: 'ACTIVE',
+        currentPeriodStart: now,
+        currentPeriodEnd: periodEnd,
+        amount: PLAN_PRICES[plan],
+        mpesaRef,
+        updatedAt: now,
+      },
+      include: { provider: { include: { user: true } } },
+    });
 
-  await prisma.subscriptionPayment.create({
-    data: {
-      subscriptionId: subscription.id,
-      amount: PLAN_PRICES[plan],
-      mpesaRef,
-      phone,
-      status: 'PAID',
-      paidAt: now,
-    },
-  });
+    const expiry = periodEnd.toLocaleDateString('en-KE', { day: 'numeric', month: 'long', year: 'numeric' });
 
-  const expiry = periodEnd.toLocaleDateString('en-KE', { day: 'numeric', month: 'long', year: 'numeric' });
+    // In-app notification
+    notificationSvc.createNotification({
+      userId: subscription.provider.userId,
+      type: 'SYSTEM',
+      title: '✅ Subscription Activated!',
+      body: `Your ${PLAN_FEATURES[plan].name} plan is now active until ${expiry}. Keep getting bookings!`,
+    }).catch(console.error);
 
-  notificationSvc.createNotification({
-    userId: subscription.provider.userId,
-    type: 'SYSTEM',
-    title: '✅ Subscription Activated!',
-    body: `Your ${PLAN_FEATURES[plan].name} plan is now active until ${expiry}. Keep getting bookings!`,
-  }).catch(console.error);
+    // SMS confirmation
+    smsSvc.sendSMS(
+      subscription.provider.user.phone,
+      `KaziShow: Your ${PLAN_FEATURES[plan].name} plan (KSh ${PLAN_PRICES[plan]}/mo) is now ACTIVE until ${periodEnd.toLocaleDateString('en-KE')}. Ref: ${mpesaRef}. Thank you!`
+    ).catch(console.error);
 
-  smsSvc.sendSMS(
-    subscription.provider.user.phone,
-    `KaziShow: Your ${PLAN_FEATURES[plan].name} subscription (KSh ${PLAN_PRICES[plan]}/month) is now active until ${periodEnd.toLocaleDateString('en-KE')}. Ref: ${mpesaRef}. Keep getting bookings!`
-  ).catch(console.error);
-
-  console.log(`✅ Subscription activated: ${subscription.provider.businessName} — ${plan} — KSh ${PLAN_PRICES[plan]}`);
-  return subscription;
+    console.log(`✅ Subscription activated: ${subscription.provider.businessName} — ${plan} — KSh ${PLAN_PRICES[plan]}`);
+    return subscription;
+  } catch (err) {
+    console.error('❌ activateSubscription error:', err.message);
+    throw err;
+  }
 }
 
 async function sendExpiryReminders() {

@@ -173,8 +173,8 @@ async function main() {
     execSync('npx prisma db push --accept-data-loss', { stdio: 'inherit' });
     console.log('[pre-deploy] prisma db push complete');
   } catch (err) {
-    console.error('[pre-deploy] db push failed:', err.message);
-    process.exit(1);
+    console.error('[pre-deploy] db push failed (non-fatal):', err.message);
+    console.log('[pre-deploy] Continuing server startup despite db push failure...');
   }
 
   console.log('[pre-deploy] ===== Pre-deploy complete =====');

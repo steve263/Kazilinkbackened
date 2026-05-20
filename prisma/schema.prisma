@@ -8,105 +8,104 @@ datasource db {
 }
 
 model User {
-  id                 String             @id @default(cuid())
-  phone              String?            @unique
-  password           String?
-  googleId           String?            @unique
-  role               Role               @default(CUSTOMER)
-  name               String
-  location           String?
-  lat                Float?
-  lng                Float?
-  deviceToken        String?
-  isOnline           Boolean            @default(false)
-  createdAt          DateTime           @default(now())
-  isActive           Boolean            @default(true)
-  profilePhoto       String?
-  email              String?            @unique
-  referralCode       String?            @unique
-  totalRewards       Float              @default(0)
-  isSuspended          Boolean              @default(false)
-  bookingsAsCustomer   Booking[]            @relation("CustomerBookings")
+  id                   String                @id @default(cuid())
+  phone                String?               @unique
+  password             String?
+  role                 Role                  @default(CUSTOMER)
+  name                 String
+  location             String?
+  lat                  Float?
+  lng                  Float?
+  deviceToken          String?
+  isOnline             Boolean               @default(false)
+  createdAt            DateTime              @default(now())
+  isActive             Boolean               @default(true)
+  profilePhoto         String?
+  email                String?               @unique
+  referralCode         String?               @unique
+  totalRewards         Float                 @default(0)
+  googleId             String?               @unique
+  isSuspended          Boolean               @default(false)
+  bookingsAsCustomer   Booking[]             @relation("CustomerBookings")
+  bookingCancellations BookingCancellation[]
   comments             Comment[]
-  following            Follow[]             @relation("Follower")
+  following            Follow[]              @relation("Follower")
+  fraudAlerts          FraudAlert[]
   likes                Like[]
-  receivedMessages     Message[]            @relation("ReceivedMessages")
-  sentMessages         Message[]            @relation("SentMessages")
+  receivedMessages     Message[]             @relation("ReceivedMessages")
+  sentMessages         Message[]             @relation("SentMessages")
   notifications        Notification[]
   provider             Provider?
   waitlistEntries      ProviderWaitlist[]
-  referralsReceived    Referral[]           @relation("ReferredReferrals")
-  referralsGiven       Referral[]           @relation("ReferrerReferrals")
-  reviews              Review[]             @relation("CustomerReviews")
+  referralsReceived    Referral[]            @relation("ReferredReferrals")
+  referralsGiven       Referral[]            @relation("ReferrerReferrals")
+  reportsReceived      Report[]              @relation("ReportedReports")
+  reportsGiven         Report[]              @relation("ReporterReports")
+  reviews              Review[]              @relation("CustomerReviews")
   rewards              Reward[]
+  suspensionAppeals    SuspensionAppeal[]
   testimonials         Testimonial[]
   tips                 Tip[]
   tipComments          TipComment[]
+  trustScore           TrustScore?
+  interactions         UserInteraction[]
+  verificationRequests VerificationRequest[]
   videos               Video[]
   videoComments        VideoComment[]
   videoLikes           VideoLike[]
   videoReports         VideoReport[]
-  trustScore           TrustScore?
-  reportsGiven         Report[]             @relation("ReporterReports")
-  reportsReceived      Report[]             @relation("ReportedReports")
-  fraudAlerts          FraudAlert[]
-  verificationRequests VerificationRequest[]
-  suspensionAppeals    SuspensionAppeal[]
-  interactions         UserInteraction[]
-  bookingCancellations BookingCancellation[]
 }
 
 model Provider {
-  id                 String             @id @default(cuid())
-  userId             String             @unique
-  category           ProviderCategory
-  businessName       String
-  description        String?
-  idNumber           String?
-  idVerified         Boolean            @default(false)
-  portfolioPhotos    String[]
-  workingHoursStart  String             @default("08:00")
-  workingHoursEnd    String             @default("18:00")
-  radiusKm           Int                @default(10)
-  minJobValue        Int                @default(500)
-  rating             Float              @default(0)
-  totalReviews       Int                @default(0)
-  isVerified         Boolean            @default(false)
-  verificationStatus VerificationStatus @default(PENDING)
-  badge              String?
-  coverImage         String?
-  idPhotoUrl         String?
-  profileImage       String?
-  idBackPhotoUrl     String?
-  isFeatured         Boolean            @default(false)
-  education          String?
-  skills             String[]
-  yearsExperience    String?
-  totalEarned        Float              @default(0)
-  walletBalance      Float              @default(0)
-  avgResponseMinutes Int?
-  providerWorkPhotos String             @default("[]")
-  busySince          DateTime?
-  isBusy             Boolean            @default(false)
-  bookings           Booking[]          @relation("ProviderBookings")
-  certificates       Certificate[]
-  followers          Follow[]
-  portfolioVideos    PortfolioVideo[]
-  posts              Post[]
-  promotions         Promotion[]
-  user               User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  waitlist           ProviderWaitlist[]
-  reviews            Review[]           @relation("ProviderReviews")
-  services           Service[]
-  testimonials       Testimonial[]
-  videos             Video[]
-  withdrawals        Withdrawal[]
-  schedule           ProviderAvailability?
-  payouts            Payout[]
-  location           ProviderLocation?
-  interactions       UserInteraction[]
-  subscription          Subscription?
+  id                     String                  @id @default(cuid())
+  userId                 String                  @unique
+  category               ProviderCategory
+  businessName           String
+  description            String?
+  idNumber               String?
+  idVerified             Boolean                 @default(false)
+  portfolioPhotos        String[]
+  workingHoursStart      String                  @default("08:00")
+  workingHoursEnd        String                  @default("18:00")
+  radiusKm               Int                     @default(10)
+  minJobValue            Int                     @default(500)
+  rating                 Float                   @default(0)
+  totalReviews           Int                     @default(0)
+  isVerified             Boolean                 @default(false)
+  verificationStatus     VerificationStatus      @default(PENDING)
+  badge                  String?
+  coverImage             String?
+  idPhotoUrl             String?
+  profileImage           String?
+  idBackPhotoUrl         String?
+  isFeatured             Boolean                 @default(false)
+  skills                 String[]
+  yearsExperience        String?
+  education              String?
+  walletBalance          Float                   @default(0)
+  totalEarned            Float                   @default(0)
+  isBusy                 Boolean                 @default(false)
+  busySince              DateTime?
+  avgResponseMinutes     Int?
+  bookings               Booking[]               @relation("ProviderBookings")
+  certificates           Certificate[]
+  followers              Follow[]
   outstandingCommissions OutstandingCommission[]
+  payouts                Payout[]
+  portfolioVideos        PortfolioVideo[]
+  posts                  Post[]
+  promotions             Promotion[]
+  user                   User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  schedule               ProviderAvailability?
+  location               ProviderLocation?
+  waitlist               ProviderWaitlist[]
+  reviews                Review[]                @relation("ProviderReviews")
+  services               Service[]
+  subscription           Subscription?
+  testimonials           Testimonial[]
+  interactions           UserInteraction[]
+  videos                 Video[]
+  withdrawals            Withdrawal[]
 }
 
 model ProviderWaitlist {
@@ -137,40 +136,39 @@ model Service {
 }
 
 model Booking {
-  id                  String                @id @default(cuid())
-  customerId          String
-  providerId          String
-  serviceId           String?
-  status              BookingStatus         @default(PENDING)
-  scheduledDate       DateTime
-  scheduledTime       String
-  address             String
-  lat                 Float?
-  lng                 Float?
-  totalAmount         Int
-  paymentStatus       PaymentStatus         @default(UNPAID)
-  mpesaRef            String?
-  notes               String?
-  customerConfirmed   Boolean               @default(false)
-  customerConfirmedAt DateTime?
-  paymentReleasedAt   DateTime?
-  completedByProvider DateTime?
-  paymentMethod       String                @default("MPESA")
-  cashPaid            Boolean               @default(false)
-  cashPaidAt          DateTime?
-  acceptedAt          DateTime?
-  jobPhotos           String                @default("[]")
-  createdAt           DateTime              @default(now())
-  updatedAt           DateTime              @updatedAt
-  customer            User                  @relation("CustomerBookings", fields: [customerId], references: [id])
-  provider            Provider              @relation("ProviderBookings", fields: [providerId], references: [id])
-  service             Service?              @relation(fields: [serviceId], references: [id])
-  messages            Message[]
-  notifications       Notification[]
-  payment             Payment?
-  review              Review?
-  cancellation        BookingCancellation?
+  id                    String                 @id @default(cuid())
+  customerId            String
+  providerId            String
+  serviceId             String?
+  status                BookingStatus          @default(PENDING)
+  scheduledDate         DateTime
+  scheduledTime         String
+  address               String
+  lat                   Float?
+  lng                   Float?
+  totalAmount           Int
+  paymentStatus         PaymentStatus          @default(UNPAID)
+  mpesaRef              String?
+  notes                 String?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  completedByProvider   DateTime?
+  customerConfirmed     Boolean                @default(false)
+  customerConfirmedAt   DateTime?
+  paymentReleasedAt     DateTime?
+  cashPaid              Boolean                @default(false)
+  cashPaidAt            DateTime?
+  paymentMethod         String                 @default("MPESA")
+  acceptedAt            DateTime?
+  customer              User                   @relation("CustomerBookings", fields: [customerId], references: [id])
+  provider              Provider               @relation("ProviderBookings", fields: [providerId], references: [id])
+  service               Service?               @relation(fields: [serviceId], references: [id])
+  cancellation          BookingCancellation?
+  messages              Message[]
+  notifications         Notification[]
   outstandingCommission OutstandingCommission?
+  payment               Payment?
+  review                Review?
 }
 
 model Notification {
@@ -190,14 +188,14 @@ model Payment {
   id                String          @id @default(cuid())
   bookingId         String          @unique
   amount            Int
-  providerAmount    Float?
-  commission        Float?
   phone             String
   mpesaRef          String?
   checkoutRequestId String?
   status            PaymentTxStatus @default(PENDING)
   type              PaymentType     @default(STK_PUSH)
   createdAt         DateTime        @default(now())
+  commission        Float?
+  providerAmount    Float?
   booking           Booking         @relation(fields: [bookingId], references: [id])
 }
 
@@ -436,14 +434,14 @@ model Promotion {
   providerId    String
   title         String
   description   String?
-  imageUrl      String?
-  originalPrice Int?
   discountType  DiscountType @default(PERCENTAGE)
   discountValue Float
   startDate     DateTime     @default(now())
   endDate       DateTime
   isActive      Boolean      @default(true)
   createdAt     DateTime     @default(now())
+  imageUrl      String?
+  originalPrice Int?
   provider      Provider     @relation(fields: [providerId], references: [id], onDelete: Cascade)
 }
 
@@ -459,6 +457,214 @@ model Reward {
   createdAt   DateTime     @default(now())
   usedAt      DateTime?
   user        User         @relation(fields: [userId], references: [id])
+}
+
+model TrustScore {
+  id            String     @id @default(cuid())
+  userId        String     @unique
+  score         Float      @default(50)
+  level         TrustLevel @default(NEW)
+  totalReports  Int        @default(0)
+  falseReports  Int        @default(0)
+  completedJobs Int        @default(0)
+  cancelledJobs Int        @default(0)
+  noShowCount   Int        @default(0)
+  latePayments  Int        @default(0)
+  verifiedPhone Boolean    @default(false)
+  verifiedId    Boolean    @default(false)
+  verifiedFace  Boolean    @default(false)
+  updatedAt     DateTime   @updatedAt
+  createdAt     DateTime   @default(now())
+  user          User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Report {
+  id          String       @id @default(cuid())
+  reporterId  String
+  reportedId  String
+  type        ReportType
+  description String
+  evidence    String?
+  status      ReportStatus @default(PENDING)
+  adminNote   String?
+  bookingId   String?
+  createdAt   DateTime     @default(now())
+  resolvedAt  DateTime?
+  reported    User         @relation("ReportedReports", fields: [reportedId], references: [id], onDelete: Cascade)
+  reporter    User         @relation("ReporterReports", fields: [reporterId], references: [id], onDelete: Cascade)
+}
+
+model FraudAlert {
+  id          String        @id @default(cuid())
+  userId      String
+  type        FraudType
+  description String
+  severity    FraudSeverity
+  resolved    Boolean       @default(false)
+  createdAt   DateTime      @default(now())
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationRequest {
+  id        String             @id @default(cuid())
+  userId    String
+  type      VerificationType
+  status    VerificationStatus @default(PENDING)
+  documents String[]
+  adminNote String?
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+  user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model SuspensionAppeal {
+  id               String       @id @default(cuid())
+  userId           String
+  suspensionReason String
+  appealReason     String
+  explanation      String
+  evidence         String[]
+  contactPhone     String
+  contactEmail     String?
+  status           AppealStatus @default(PENDING)
+  adminNote        String?
+  reviewedBy       String?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  resolvedAt       DateTime?
+  user             User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model ProviderAvailability {
+  id           String                  @id @default(cuid())
+  providerId   String                  @unique
+  monday       Boolean                 @default(true)
+  tuesday      Boolean                 @default(true)
+  wednesday    Boolean                 @default(true)
+  thursday     Boolean                 @default(true)
+  friday       Boolean                 @default(true)
+  saturday     Boolean                 @default(false)
+  sunday       Boolean                 @default(false)
+  startTime    String                  @default("08:00")
+  endTime      String                  @default("18:00")
+  slotDuration Int                     @default(60)
+  breakStart   String?
+  breakEnd     String?
+  updatedAt    DateTime                @updatedAt
+  createdAt    DateTime                @default(now())
+  exceptions   AvailabilityException[]
+  provider     Provider                @relation(fields: [providerId], references: [id], onDelete: Cascade)
+}
+
+model AvailabilityException {
+  id             String               @id @default(cuid())
+  availabilityId String
+  date           DateTime
+  isAvailable    Boolean              @default(false)
+  reason         String?
+  createdAt      DateTime             @default(now())
+  availability   ProviderAvailability @relation(fields: [availabilityId], references: [id], onDelete: Cascade)
+}
+
+model Payout {
+  id          String       @id @default(cuid())
+  providerId  String
+  amount      Float
+  phone       String
+  status      PayoutStatus @default(PENDING)
+  mpesaRef    String?
+  adminNote   String?
+  requestedAt DateTime     @default(now())
+  processedAt DateTime?
+  provider    Provider     @relation(fields: [providerId], references: [id], onDelete: Cascade)
+}
+
+model ProviderLocation {
+  id         String   @id @default(cuid())
+  providerId String   @unique
+  lat        Float
+  lng        Float
+  heading    Float?
+  speed      Float?
+  updatedAt  DateTime @updatedAt
+  createdAt  DateTime @default(now())
+  provider   Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+}
+
+model UserInteraction {
+  id         String   @id @default(cuid())
+  userId     String
+  providerId String
+  type       String
+  count      Int      @default(1)
+  lastAt     DateTime @default(now())
+  createdAt  DateTime @default(now())
+  provider   Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, providerId, type])
+}
+
+model BookingCancellation {
+  id           String    @id @default(cuid())
+  bookingId    String    @unique
+  cancelledBy  String
+  reason       String
+  refundAmount Float     @default(0)
+  refundStatus String    @default("PENDING")
+  refundedAt   DateTime?
+  createdAt    DateTime  @default(now())
+  booking      Booking   @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  user         User      @relation(fields: [cancelledBy], references: [id])
+}
+
+model OutstandingCommission {
+  id                String           @id @default(cuid())
+  bookingId         String           @unique
+  providerId        String
+  amount            Float
+  status            CommissionStatus @default(PENDING)
+  mpesaRef          String?
+  checkoutRequestId String?
+  dueAt             DateTime
+  paidAt            DateTime?
+  waivedAt          DateTime?
+  waivedBy          String?
+  waiveReason       String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  booking           Booking          @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  provider          Provider         @relation(fields: [providerId], references: [id], onDelete: Cascade)
+}
+
+model Subscription {
+  id                 String                @id @default(cuid())
+  providerId         String                @unique
+  plan               SubscriptionPlan      @default(STARTER)
+  status             SubscriptionStatus    @default(TRIAL)
+  trialStartDate     DateTime              @default(now())
+  trialEndDate       DateTime
+  currentPeriodStart DateTime?
+  currentPeriodEnd   DateTime?
+  amount             Float?
+  mpesaRef           String?
+  autoRenew          Boolean               @default(true)
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+  provider           Provider              @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  payments           SubscriptionPayment[]
+}
+
+model SubscriptionPayment {
+  id             String       @id @default(cuid())
+  subscriptionId String
+  amount         Float
+  mpesaRef       String?
+  phone          String
+  status         String       @default("PENDING")
+  paidAt         DateTime?
+  createdAt      DateTime     @default(now())
+  subscription   Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
 }
 
 enum Role {
@@ -485,10 +691,10 @@ enum BookingStatus {
   ARRIVED
   IN_PROGRESS
   COMPLETED
-  DISPUTED
   CANCELLED
   PREPARING
   READY
+  DISPUTED
 }
 
 enum PaymentStatus {
@@ -497,7 +703,6 @@ enum PaymentStatus {
   REFUNDED
   CASH
 }
-
 
 enum PaymentTxStatus {
   PENDING
@@ -596,25 +801,6 @@ enum DiscountType {
   FIXED
 }
 
-model TrustScore {
-  id            String     @id @default(cuid())
-  userId        String     @unique
-  user          User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  score         Float      @default(50)
-  level         TrustLevel @default(NEW)
-  totalReports  Int        @default(0)
-  falseReports  Int        @default(0)
-  completedJobs Int        @default(0)
-  cancelledJobs Int        @default(0)
-  noShowCount   Int        @default(0)
-  latePayments  Int        @default(0)
-  verifiedPhone Boolean    @default(false)
-  verifiedId    Boolean    @default(false)
-  verifiedFace  Boolean    @default(false)
-  updatedAt     DateTime   @updatedAt
-  createdAt     DateTime   @default(now())
-}
-
 enum TrustLevel {
   NEW
   BASIC
@@ -622,22 +808,6 @@ enum TrustLevel {
   VERIFIED
   ELITE
   SUSPENDED
-}
-
-model Report {
-  id          String       @id @default(cuid())
-  reporterId  String
-  reporter    User         @relation("ReporterReports", fields: [reporterId], references: [id], onDelete: Cascade)
-  reportedId  String
-  reported    User         @relation("ReportedReports", fields: [reportedId], references: [id], onDelete: Cascade)
-  type        ReportType
-  description String
-  evidence    String?
-  status      ReportStatus @default(PENDING)
-  adminNote   String?
-  bookingId   String?
-  createdAt   DateTime     @default(now())
-  resolvedAt  DateTime?
 }
 
 enum ReportType {
@@ -660,17 +830,6 @@ enum ReportStatus {
   DISMISSED
 }
 
-model FraudAlert {
-  id          String        @id @default(cuid())
-  userId      String
-  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  type        FraudType
-  description String
-  severity    FraudSeverity
-  resolved    Boolean       @default(false)
-  createdAt   DateTime      @default(now())
-}
-
 enum FraudType {
   MULTIPLE_ACCOUNTS
   FAKE_REVIEWS
@@ -688,42 +847,12 @@ enum FraudSeverity {
   CRITICAL
 }
 
-model VerificationRequest {
-  id        String             @id @default(cuid())
-  userId    String
-  user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  type      VerificationType
-  status    VerificationStatus @default(PENDING)
-  documents String[]
-  adminNote String?
-  createdAt DateTime           @default(now())
-  updatedAt DateTime           @updatedAt
-}
-
 enum VerificationType {
   PHONE
   NATIONAL_ID
   FACE
   BUSINESS
   ADDRESS
-}
-
-model SuspensionAppeal {
-  id               String       @id @default(cuid())
-  userId           String
-  user             User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  suspensionReason String
-  appealReason     String
-  explanation      String
-  evidence         String[]
-  contactPhone     String
-  contactEmail     String?
-  status           AppealStatus @default(PENDING)
-  adminNote        String?
-  reviewedBy       String?
-  createdAt        DateTime     @default(now())
-  updatedAt        DateTime     @updatedAt
-  resolvedAt       DateTime?
 }
 
 enum AppealStatus {
@@ -734,50 +863,6 @@ enum AppealStatus {
   MORE_INFO_NEEDED
 }
 
-model ProviderAvailability {
-  id           String                  @id @default(cuid())
-  providerId   String                  @unique
-  provider     Provider                @relation(fields: [providerId], references: [id], onDelete: Cascade)
-  monday       Boolean                 @default(true)
-  tuesday      Boolean                 @default(true)
-  wednesday    Boolean                 @default(true)
-  thursday     Boolean                 @default(true)
-  friday       Boolean                 @default(true)
-  saturday     Boolean                 @default(false)
-  sunday       Boolean                 @default(false)
-  startTime    String                  @default("08:00")
-  endTime      String                  @default("18:00")
-  slotDuration Int                     @default(60)
-  breakStart   String?
-  breakEnd     String?
-  updatedAt    DateTime                @updatedAt
-  createdAt    DateTime                @default(now())
-  exceptions   AvailabilityException[]
-}
-
-model AvailabilityException {
-  id             String               @id @default(cuid())
-  availabilityId String
-  availability   ProviderAvailability @relation(fields: [availabilityId], references: [id], onDelete: Cascade)
-  date           DateTime
-  isAvailable    Boolean              @default(false)
-  reason         String?
-  createdAt      DateTime             @default(now())
-}
-
-model Payout {
-  id          String       @id @default(cuid())
-  providerId  String
-  provider    Provider     @relation(fields: [providerId], references: [id], onDelete: Cascade)
-  amount      Float
-  phone       String
-  status      PayoutStatus @default(PENDING)
-  mpesaRef    String?
-  adminNote   String?
-  requestedAt DateTime     @default(now())
-  processedAt DateTime?
-}
-
 enum PayoutStatus {
   PENDING
   APPROVED
@@ -786,105 +871,11 @@ enum PayoutStatus {
   REJECTED
 }
 
-model ProviderLocation {
-  id         String   @id @default(cuid())
-  providerId String   @unique
-  provider   Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
-  lat        Float
-  lng        Float
-  heading    Float?
-  speed      Float?
-  updatedAt  DateTime @updatedAt
-  createdAt  DateTime @default(now())
-}
-
-model UserInteraction {
-  id         String   @id @default(cuid())
-  userId     String
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  providerId String
-  provider   Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
-  type       String
-  count      Int      @default(1)
-  lastAt     DateTime @default(now())
-  createdAt  DateTime @default(now())
-
-  @@unique([userId, providerId, type])
-}
-
-// ─── Booking Cancellation ─────────────────────────────────────────────────────
-
-model BookingCancellation {
-  id           String   @id @default(cuid())
-  bookingId    String   @unique
-  booking      Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  cancelledBy  String
-  user         User     @relation(fields: [cancelledBy], references: [id])
-  reason       String
-  refundAmount Float    @default(0)
-  refundStatus String   @default("PENDING")
-  refundedAt   DateTime?
-  createdAt    DateTime @default(now())
-}
-
-// ─── Cash Commission System ───────────────────────────────────────────────────
-
-model OutstandingCommission {
-  id            String           @id @default(cuid())
-  bookingId     String           @unique
-  booking       Booking          @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  providerId    String
-  provider      Provider         @relation(fields: [providerId], references: [id], onDelete: Cascade)
-  amount        Float
-  status        CommissionStatus @default(PENDING)
-  mpesaRef      String?
-  checkoutRequestId String?
-  dueAt         DateTime
-  paidAt        DateTime?
-  waivedAt      DateTime?
-  waivedBy      String?
-  waiveReason   String?
-  createdAt     DateTime         @default(now())
-  updatedAt     DateTime         @updatedAt
-}
-
 enum CommissionStatus {
   PENDING
   PAID
   OVERDUE
   WAIVED
-}
-
-// ─── Subscription System ───────────────────────────────────────────────────────
-
-model Subscription {
-  id                 String             @id @default(cuid())
-  providerId         String             @unique
-  provider           Provider           @relation(fields: [providerId], references: [id], onDelete: Cascade)
-  plan               SubscriptionPlan   @default(STARTER)
-  status             SubscriptionStatus @default(TRIAL)
-  trialStartDate     DateTime           @default(now())
-  trialEndDate       DateTime
-  currentPeriodStart DateTime?
-  currentPeriodEnd   DateTime?
-  amount             Float?
-  mpesaRef           String?
-  autoRenew          Boolean            @default(true)
-  createdAt          DateTime           @default(now())
-  updatedAt          DateTime           @updatedAt
-  payments           SubscriptionPayment[]
-}
-
-model SubscriptionPayment {
-  id             String       @id @default(cuid())
-  subscriptionId String
-  subscription   Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
-  amount         Float
-  mpesaRef       String?
-  phone          String
-  status         String       @default("PENDING")
-  paidAt         DateTime?
-  createdAt      DateTime     @default(now())
 }
 
 enum SubscriptionPlan {
@@ -899,12 +890,4 @@ enum SubscriptionStatus {
   EXPIRED
   SUSPENDED
   CANCELLED
-}
-
-
-model AppSettings {
-  id        String   @id @default(cuid())
-  settings  String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
 }

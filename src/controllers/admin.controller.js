@@ -1112,14 +1112,18 @@ const DEFAULT_SETTINGS = {
 
 async function getSettings(req, res) {
   try {
-    const row = await prisma.appSettings.findFirst().catch(() => null);
-    if (!row) {
-      await prisma.appSettings.create({ data: { settings: JSON.stringify(DEFAULT_SETTINGS) } }).catch(() => null);
-      return res.json({ success: true, data: DEFAULT_SETTINGS });
+    const result = await prisma.$queryRaw`
+      SELECT settings FROM "AppSettings" LIMIT 1
+    `.catch(() => null);
+
+    if (result && result[0] && result[0].settings) {
+      const parsed = JSON.parse(result[0].settings);
+      return res.json({ success: true, data: { ...DEFAULT_SETTINGS, ...parsed } });
     }
-    const parsed = JSON.parse(row.settings);
-    res.json({ success: true, data: { ...DEFAULT_SETTINGS, ...parsed } });
+
+    res.json({ success: true, data: DEFAULT_SETTINGS });
   } catch (err) {
+    console.error('getSettings error:', err.message);
     res.json({ success: true, data: DEFAULT_SETTINGS });
   }
 }
@@ -1127,32 +1131,24 @@ async function getSettings(req, res) {
 async function updateSettings(req, res) {
   try {
     const newSettings = req.body;
+    const settingsJson = JSON.stringify(newSettings);
+    const now = new Date();
 
-    if (newSettings.commissionRate < 0 || newSettings.commissionRate > 50) {
-      return res.status(400).json({ success: false, message: 'Commission rate must be between 0 and 50 percent' });
-    }
-    if (newSettings.starterPrice < 100 || newSettings.starterPrice > 10000) {
-      return res.status(400).json({ success: false, message: 'Starter price must be between KSh 100 and KSh 10,000' });
-    }
-
-    const existing = await prisma.appSettings.findFirst().catch(() => null);
-    if (existing) {
-      await prisma.appSettings.update({
-        where: { id: existing.id },
-        data: { settings: JSON.stringify(newSettings), updatedAt: new Date() },
-      });
-    } else {
-      await prisma.appSettings.create({ data: { settings: JSON.stringify(newSettings) } });
-    }
+    await prisma.$executeRaw`
+      INSERT INTO "AppSettings" ("id", "settings", "createdAt", "updatedAt")
+      VALUES ('default-settings', ${settingsJson}, ${now}, ${now})
+      ON CONFLICT ("id")
+      DO UPDATE SET "settings" = ${settingsJson}, "updatedAt" = ${now}
+    `;
 
     if (newSettings.commissionRate !== undefined) {
       process.env.COMMISSION_RATE = (newSettings.commissionRate / 100).toString();
     }
 
-    console.log('✅ App settings updated by admin');
+    console.log('✅ Settings updated by admin');
     res.json({ success: true, data: { message: 'Settings saved successfully' } });
   } catch (err) {
-    console.error('❌ updateSettings error:', err.message);
+    console.error('updateSettings error:', err.message);
     res.status(500).json({ success: false, message: err.message });
   }
 }

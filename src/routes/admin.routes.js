@@ -62,6 +62,12 @@ router.post('/broadcast',                     ...adminOnly, ctrl.broadcastAnnoun
 router.get('/auto-suspension/candidates',     ...adminOnly, ctrl.getAutoSuspensionCandidates);
 router.post('/auto-suspension/run',           ...adminOnly, ctrl.runAutoSuspension);
 
+// Disputes
+router.get('/disputes',              ...adminOnly, ctrl.getDisputes);
+router.get('/disputes/:id',          ...adminOnly, ctrl.getDisputeDetail);
+router.put('/disputes/:id/release',  ...adminOnly, ctrl.releaseToProvider);
+router.put('/disputes/:id/refund',   ...adminOnly, ctrl.refundToCustomer);
+
 // App settings
 router.get('/settings/verify', ...adminOnly, async (req, res) => {
   try {

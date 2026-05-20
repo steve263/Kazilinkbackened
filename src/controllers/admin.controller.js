@@ -962,6 +962,7 @@ async function adminBadges(req, res) {
       data: {
         approvals: pendingProviders + pendingCerts + pendingVideos + pendingTestimonials + pendingTips,
         bookings:  disputes,
+        disputes,
         withdrawals: pendingWithdrawals,
         appeals:   pendingAppeals,
         expiredSubs,
@@ -1310,6 +1311,192 @@ async function rejectVerification(req, res) {
   }
 }
 
+// ─── Dispute Management ──────────────────────────────────────────────────────
+
+async function getDisputes(req, res) {
+  try {
+    const { status } = req.query;
+    const where = { status: status || 'DISPUTED' };
+
+    const disputes = await prisma.booking.findMany({
+      where,
+      include: {
+        customer: { select: { id: true, name: true, phone: true, profilePhoto: true } },
+        provider: { include: { user: { select: { id: true, name: true, phone: true, profilePhoto: true } } } },
+        service:  { select: { name: true, price: true } },
+      },
+      orderBy: { updatedAt: 'desc' },
+    });
+
+    const disputesWithReports = await Promise.all(
+      disputes.map(async (booking) => {
+        const report = await prisma.report.findFirst({
+          where: { bookingId: booking.id, type: 'JOB_DISPUTE' },
+        }).catch(() => null);
+        return { ...booking, disputeReport: report };
+      })
+    );
+
+    const [totalDisputed, totalResolved] = await Promise.all([
+      prisma.booking.count({ where: { status: 'DISPUTED' } }),
+      prisma.booking.count({ where: { status: { in: ['COMPLETED', 'CANCELLED'] }, paymentReleasedAt: { not: null } } }),
+    ]);
+
+    res.json({ success: true, data: { disputes: disputesWithReports, stats: { totalDisputed, totalResolved } } });
+  } catch (err) {
+    console.error('getDisputes error:', err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+async function getDisputeDetail(req, res) {
+  try {
+    const booking = await prisma.booking.findUnique({
+      where: { id: req.params.id },
+      include: {
+        customer: true,
+        provider: { include: { user: true } },
+        service: true,
+      },
+    });
+    if (!booking) return res.status(404).json({ success: false, message: 'Booking not found' });
+
+    const report = await prisma.report.findFirst({
+      where: { bookingId: req.params.id, type: 'JOB_DISPUTE' },
+    }).catch(() => null);
+
+    res.json({ success: true, data: { ...booking, disputeReport: report } });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+async function releaseToProvider(req, res) {
+  try {
+    const { notes } = req.body;
+    const bookingId = req.params.id;
+
+    const booking = await prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: { customer: true, provider: { include: { user: true } }, service: true },
+    });
+    if (!booking) return res.status(404).json({ success: false, message: 'Booking not found' });
+
+    const commissionRate = parseFloat(process.env.COMMISSION_RATE) || 0.10;
+    const commission = Math.round(booking.totalAmount * commissionRate);
+    const providerAmount = booking.totalAmount - commission;
+
+    await prisma.booking.update({
+      where: { id: bookingId },
+      data: { status: 'COMPLETED', customerConfirmed: true, customerConfirmedAt: new Date(), paymentReleasedAt: new Date() },
+    });
+
+    await prisma.payment.updateMany({
+      where: { bookingId },
+      data: { status: 'PAID', providerAmount, commission },
+    }).catch(() => {});
+
+    const noteText = notes ? ` Note: ${notes}` : '';
+
+    notificationSvc.createNotification({
+      userId: booking.provider.userId,
+      type: 'PAYMENT_RECEIVED',
+      title: '💰 Payment Released by Admin!',
+      body: `KaziShow admin resolved the dispute and released KSh ${providerAmount} to your earnings for ${booking.service?.name || 'Service'}.${noteText}`,
+      bookingId,
+    }).catch(console.error);
+
+    notificationSvc.createNotification({
+      userId: booking.customerId,
+      type: 'SYSTEM',
+      title: '⚖️ Dispute Resolved',
+      body: `KaziShow admin reviewed your dispute and released payment to ${booking.provider.businessName}.${noteText}`,
+      bookingId,
+    }).catch(console.error);
+
+    smsSvc.sendSMS(booking.provider.user.phone,
+      `KaziShow: Dispute resolved! KSh ${providerAmount} has been released to your earnings. Thank you for your patience.`
+    ).catch(console.error);
+
+    smsSvc.sendSMS(booking.customer.phone,
+      `KaziShow: Your dispute has been resolved. Payment was released to the provider after admin review.${noteText}`
+    ).catch(console.error);
+
+    console.log(`✅ Dispute resolved — released to provider: ${bookingId}`);
+    res.json({ success: true, data: { message: `Payment of KSh ${providerAmount} released to provider` } });
+  } catch (err) {
+    console.error('releaseToProvider error:', err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+async function refundToCustomer(req, res) {
+  try {
+    const { notes } = req.body;
+    const bookingId = req.params.id;
+
+    const booking = await prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: { customer: true, provider: { include: { user: true } }, service: true },
+    });
+    if (!booking) return res.status(404).json({ success: false, message: 'Booking not found' });
+
+    await prisma.booking.update({
+      where: { id: bookingId },
+      data: { status: 'CANCELLED', paymentReleasedAt: new Date() },
+    });
+
+    await prisma.payment.updateMany({
+      where: { bookingId },
+      data: { status: 'REFUNDED' },
+    }).catch(() => {});
+
+    await prisma.bookingCancellation.upsert({
+      where: { bookingId },
+      create: {
+        bookingId,
+        cancelledBy: req.user.id,
+        reason: `Admin dispute resolution: ${notes || 'Refund approved by admin'}`,
+        refundAmount: booking.totalAmount,
+        refundStatus: 'PENDING',
+      },
+      update: { refundAmount: booking.totalAmount, refundStatus: 'PENDING' },
+    }).catch(() => {});
+
+    const noteText = notes ? ` Note: ${notes}` : '';
+
+    notificationSvc.createNotification({
+      userId: booking.customerId,
+      type: 'SYSTEM',
+      title: '💰 Refund Approved!',
+      body: `KaziShow admin approved a full refund of KSh ${booking.totalAmount}. You will receive the money via M-Pesa within 24 hours.${noteText}`,
+      bookingId,
+    }).catch(console.error);
+
+    notificationSvc.createNotification({
+      userId: booking.provider.userId,
+      type: 'SYSTEM',
+      title: '⚖️ Dispute Resolved — Refund Given',
+      body: `KaziShow admin decided to refund the customer for ${booking.service?.name || 'Service'}.${noteText} Please ensure quality service in future.`,
+      bookingId,
+    }).catch(console.error);
+
+    smsSvc.sendSMS(booking.customer.phone,
+      `KaziShow: Dispute resolved! You will receive a full refund of KSh ${booking.totalAmount} via M-Pesa within 24 hours. Thank you for your patience.`
+    ).catch(console.error);
+
+    smsSvc.sendSMS(booking.provider.user.phone,
+      `KaziShow: Dispute resolved. Customer has been refunded KSh ${booking.totalAmount}. Please maintain quality service standards.`
+    ).catch(console.error);
+
+    console.log(`✅ Dispute resolved — refunded to customer: ${bookingId}`);
+    res.json({ success: true, data: { message: `Full refund of KSh ${booking.totalAmount} approved for customer` } });
+  } catch (err) {
+    console.error('refundToCustomer error:', err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
 module.exports = {
   getStats,
   getPendingProviders,
@@ -1347,4 +1534,8 @@ module.exports = {
   rejectVerification,
   getSettings,
   updateSettings,
+  getDisputes,
+  getDisputeDetail,
+  releaseToProvider,
+  refundToCustomer,
 };

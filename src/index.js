@@ -129,6 +129,15 @@ const _startupMigrations = [
   `ALTER TABLE "Booking"  ADD COLUMN IF NOT EXISTS "acceptedAt" TIMESTAMP(3)`,
   `ALTER TABLE "Booking"  ADD COLUMN IF NOT EXISTS "jobPhotos"  TEXT NOT NULL DEFAULT '[]'`,
   `CREATE TABLE IF NOT EXISTS "AppSettings" ("id" TEXT NOT NULL, "settings" TEXT NOT NULL, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT NOW(), "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT NOW(), CONSTRAINT "AppSettings_pkey" PRIMARY KEY ("id"))`,
+  // OutstandingCommission columns — critical for commission cron job
+  `ALTER TABLE "OutstandingCommission" ADD COLUMN IF NOT EXISTS "amount"            DOUBLE PRECISION NOT NULL DEFAULT 0`,
+  `ALTER TABLE "OutstandingCommission" ADD COLUMN IF NOT EXISTS "mpesaRef"          TEXT`,
+  `ALTER TABLE "OutstandingCommission" ADD COLUMN IF NOT EXISTS "checkoutRequestId" TEXT`,
+  `ALTER TABLE "OutstandingCommission" ADD COLUMN IF NOT EXISTS "dueAt"             TIMESTAMP(3)`,
+  `ALTER TABLE "OutstandingCommission" ADD COLUMN IF NOT EXISTS "paidAt"            TIMESTAMP(3)`,
+  `ALTER TABLE "OutstandingCommission" ADD COLUMN IF NOT EXISTS "waivedAt"          TIMESTAMP(3)`,
+  `ALTER TABLE "OutstandingCommission" ADD COLUMN IF NOT EXISTS "waivedBy"          TEXT`,
+  `ALTER TABLE "OutstandingCommission" ADD COLUMN IF NOT EXISTS "waiveReason"       TEXT`,
 ];
 Promise.all(_startupMigrations.map(sql => _prisma.$executeRawUnsafe(sql)))
   .then(() => console.log('[startup] Column migrations applied'))

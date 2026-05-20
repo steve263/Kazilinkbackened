@@ -1112,18 +1112,28 @@ const DEFAULT_SETTINGS = {
 
 async function getSettings(req, res) {
   try {
-    const result = await prisma.$queryRaw`
-      SELECT settings FROM "AppSettings" LIMIT 1
-    `.catch(() => null);
+    console.log('📖 Getting app settings...');
+    const result = await prisma.$queryRawUnsafe(
+      `SELECT settings FROM "AppSettings" LIMIT 1`
+    );
 
-    if (result && result[0] && result[0].settings) {
+    if (result && result.length > 0 && result[0].settings) {
       const parsed = JSON.parse(result[0].settings);
+      console.log('✅ Settings loaded from database');
       return res.json({ success: true, data: { ...DEFAULT_SETTINGS, ...parsed } });
     }
 
+    console.log('⚠️ No settings in DB — creating defaults');
+    await prisma.$executeRawUnsafe(
+      `INSERT INTO "AppSettings" ("id", "settings", "createdAt", "updatedAt")
+       VALUES ('default-settings', $1, NOW(), NOW())
+       ON CONFLICT ("id") DO NOTHING`,
+      JSON.stringify(DEFAULT_SETTINGS)
+    );
+
     res.json({ success: true, data: DEFAULT_SETTINGS });
   } catch (err) {
-    console.error('getSettings error:', err.message);
+    console.error('❌ getSettings error:', err.message);
     res.json({ success: true, data: DEFAULT_SETTINGS });
   }
 }
@@ -1131,25 +1141,27 @@ async function getSettings(req, res) {
 async function updateSettings(req, res) {
   try {
     const newSettings = req.body;
-    const settingsJson = JSON.stringify(newSettings);
-    const now = new Date();
+    console.log('💾 Saving settings:', Object.keys(newSettings));
 
-    await prisma.$executeRaw`
-      INSERT INTO "AppSettings" ("id", "settings", "createdAt", "updatedAt")
-      VALUES ('default-settings', ${settingsJson}, ${now}, ${now})
-      ON CONFLICT ("id")
-      DO UPDATE SET "settings" = ${settingsJson}, "updatedAt" = ${now}
-    `;
+    const settingsJson = JSON.stringify(newSettings);
+    await prisma.$executeRawUnsafe(
+      `INSERT INTO "AppSettings" ("id", "settings", "createdAt", "updatedAt")
+       VALUES ('default-settings', $1, NOW(), NOW())
+       ON CONFLICT ("id")
+       DO UPDATE SET "settings" = $1, "updatedAt" = NOW()`,
+      settingsJson
+    );
 
     if (newSettings.commissionRate !== undefined) {
       process.env.COMMISSION_RATE = (newSettings.commissionRate / 100).toString();
+      console.log(`✅ Commission rate updated to ${newSettings.commissionRate}%`);
     }
 
-    console.log('✅ Settings updated by admin');
+    console.log('✅ Settings saved to database successfully');
     res.json({ success: true, data: { message: 'Settings saved successfully' } });
   } catch (err) {
-    console.error('updateSettings error:', err.message);
-    res.status(500).json({ success: false, message: err.message });
+    console.error('❌ updateSettings error:', err.message);
+    res.status(500).json({ success: false, message: 'Failed to save settings: ' + err.message });
   }
 }
 

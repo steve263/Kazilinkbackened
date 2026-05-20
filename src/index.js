@@ -120,6 +120,24 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 5000;
 const { initReminders } = require('./services/reminder.service');
 
+async function ensureSettingsTable() {
+  try {
+    await _prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "AppSettings" (
+        "id" TEXT NOT NULL,
+        "settings" TEXT NOT NULL,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "AppSettings_pkey" PRIMARY KEY ("id")
+      )
+    `);
+    console.log('✅ AppSettings table ready');
+  } catch (err) {
+    console.log('AppSettings table check:', err.message);
+  }
+}
+ensureSettingsTable();
+
 // Ensure new columns exist (safe to run multiple times — IF NOT EXISTS guard)
 const _startupMigrations = [
   `ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "avgResponseMinutes"   INTEGER`,

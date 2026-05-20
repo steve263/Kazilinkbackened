@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const { auth, requireRole } = require('../middleware/auth');
 const ctrl = require('../controllers/admin.controller');
+const prisma = require('../config/db');
 const testimonialCtrl = require('../controllers/testimonial.controller');
 const tipCtrl = require('../controllers/tip.controller');
 const { getAdminWithdrawals, processWithdrawal } = require('../controllers/withdrawal.controller');
@@ -62,6 +63,21 @@ router.get('/auto-suspension/candidates',     ...adminOnly, ctrl.getAutoSuspensi
 router.post('/auto-suspension/run',           ...adminOnly, ctrl.runAutoSuspension);
 
 // App settings
+router.get('/settings/verify', ...adminOnly, async (req, res) => {
+  try {
+    const result = await prisma.$queryRawUnsafe(
+      `SELECT id, settings, "updatedAt" FROM "AppSettings" LIMIT 1`
+    );
+    res.json({
+      success: true,
+      found: result.length > 0,
+      lastUpdated: result[0]?.updatedAt,
+      data: result[0] ? JSON.parse(result[0].settings) : null,
+    });
+  } catch (err) {
+    res.json({ success: false, error: err.message });
+  }
+});
 router.get('/settings',                       ...adminOnly, ctrl.getSettings);
 router.put('/settings',                       ...adminOnly, ctrl.updateSettings);
 

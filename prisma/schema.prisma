@@ -622,11 +622,14 @@ model OutstandingCommission {
   id                String           @id @default(cuid())
   bookingId         String           @unique
   providerId        String
-  amount            Float
+  amount            Float            @default(0)
+  cashAmount        Float            @default(0)
+  commissionAmount  Float            @default(0)
+  reminderCount     Int              @default(0)
   status            CommissionStatus @default(PENDING)
   mpesaRef          String?
   checkoutRequestId String?
-  dueAt             DateTime
+  dueAt             DateTime         @default(now())
   paidAt            DateTime?
   waivedAt          DateTime?
   waivedBy          String?

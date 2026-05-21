@@ -201,10 +201,13 @@ async function applyDirectMigrations() {
 
   const commissionCols = [
     [`OutstandingCommission.amount`,            `ALTER TABLE "OutstandingCommission" ADD COLUMN IF NOT EXISTS "amount"            DOUBLE PRECISION NOT NULL DEFAULT 0`],
+    [`OutstandingCommission.cashAmount`,        `ALTER TABLE "OutstandingCommission" ADD COLUMN IF NOT EXISTS "cashAmount"        DOUBLE PRECISION NOT NULL DEFAULT 0`],
+    [`OutstandingCommission.commissionAmount`,  `ALTER TABLE "OutstandingCommission" ADD COLUMN IF NOT EXISTS "commissionAmount"  DOUBLE PRECISION NOT NULL DEFAULT 0`],
+    [`OutstandingCommission.reminderCount`,     `ALTER TABLE "OutstandingCommission" ADD COLUMN IF NOT EXISTS "reminderCount"     INTEGER          NOT NULL DEFAULT 0`],
     [`OutstandingCommission.status`,            `ALTER TABLE "OutstandingCommission" ADD COLUMN IF NOT EXISTS "status"            "CommissionStatus" NOT NULL DEFAULT 'PENDING'`],
     [`OutstandingCommission.mpesaRef`,          `ALTER TABLE "OutstandingCommission" ADD COLUMN IF NOT EXISTS "mpesaRef"          TEXT`],
     [`OutstandingCommission.checkoutRequestId`, `ALTER TABLE "OutstandingCommission" ADD COLUMN IF NOT EXISTS "checkoutRequestId" TEXT`],
-    [`OutstandingCommission.dueAt`,             `ALTER TABLE "OutstandingCommission" ADD COLUMN IF NOT EXISTS "dueAt"             TIMESTAMP(3)`],
+    [`OutstandingCommission.dueAt`,             `ALTER TABLE "OutstandingCommission" ADD COLUMN IF NOT EXISTS "dueAt"             TIMESTAMP(3) NOT NULL DEFAULT NOW()`],
     [`OutstandingCommission.paidAt`,            `ALTER TABLE "OutstandingCommission" ADD COLUMN IF NOT EXISTS "paidAt"            TIMESTAMP(3)`],
     [`OutstandingCommission.waivedAt`,          `ALTER TABLE "OutstandingCommission" ADD COLUMN IF NOT EXISTS "waivedAt"          TIMESTAMP(3)`],
     [`OutstandingCommission.waivedBy`,          `ALTER TABLE "OutstandingCommission" ADD COLUMN IF NOT EXISTS "waivedBy"          TEXT`],
@@ -212,6 +215,12 @@ async function applyDirectMigrations() {
     [`OutstandingCommission.createdAt`,         `ALTER TABLE "OutstandingCommission" ADD COLUMN IF NOT EXISTS "createdAt"         TIMESTAMP(3) NOT NULL DEFAULT NOW()`],
     [`OutstandingCommission.updatedAt`,         `ALTER TABLE "OutstandingCommission" ADD COLUMN IF NOT EXISTS "updatedAt"         TIMESTAMP(3) NOT NULL DEFAULT NOW()`],
   ];
+
+  // Set defaults on columns that may already exist in production without them
+  await safeQuery('OutstandingCommission.cashAmount default',       `ALTER TABLE "OutstandingCommission" ALTER COLUMN "cashAmount"       SET DEFAULT 0`);
+  await safeQuery('OutstandingCommission.commissionAmount default',  `ALTER TABLE "OutstandingCommission" ALTER COLUMN "commissionAmount"  SET DEFAULT 0`);
+  await safeQuery('OutstandingCommission.amount default',            `ALTER TABLE "OutstandingCommission" ALTER COLUMN "amount"            SET DEFAULT 0`);
+  await safeQuery('OutstandingCommission.reminderCount default',     `ALTER TABLE "OutstandingCommission" ALTER COLUMN "reminderCount"     SET DEFAULT 0`);
 
   for (const [label, sql] of commissionCols) {
     await safeQuery(label, sql);

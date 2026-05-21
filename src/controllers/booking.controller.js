@@ -1164,9 +1164,12 @@ async function markCashPaid(req, res) {
         data: {
           bookingId,
           providerId: booking.providerId,
-          amount: commissionAmount,
-          dueAt,
+          amount: commissionAmount || 0,
+          cashAmount: booking.totalAmount || 0,
+          commissionAmount: commissionAmount || 0,
+          reminderCount: 0,
           status: 'PENDING',
+          dueAt,
         },
       });
     });

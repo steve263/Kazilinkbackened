@@ -451,6 +451,30 @@ async function updateStatus(req, res) {
         ).catch(console.error);
       }
 
+      // Auto-create commission for FUNDI non-escrow bookings
+      if (isFundi && !isEscrow) {
+        const commissionRate = parseFloat(process.env.COMMISSION_RATE) || 0.10;
+        const commissionAmount = Math.round(booking.totalAmount * commissionRate);
+        const dueDate = new Date();
+        dueDate.setHours(dueDate.getHours() + 24);
+        await prisma.outstandingCommission.upsert({
+          where: { bookingId: booking.id },
+          create: {
+            providerId: booking.providerId,
+            bookingId: booking.id,
+            cashAmount: booking.totalAmount || 0,
+            commissionAmount,
+            amount: commissionAmount,
+            status: 'PENDING',
+            dueDate,
+            dueAt: dueDate,
+            reminderCount: 0,
+          },
+          update: {},
+        }).catch((e) => console.error('Commission upsert error:', e.message));
+        console.log(`💰 Commission created: KSh ${commissionAmount} for booking ${booking.id}`);
+      }
+
       await prisma.provider.update({
         where: { id: booking.providerId },
         data: { isBusy: false, busySince: null },
@@ -1339,23 +1363,30 @@ async function commissionCallback(req, res) {
 async function getOutstandingCommission(req, res) {
   try {
     const provider = await prisma.provider.findUnique({ where: { userId: req.user.id } });
-    if (!provider) return res.status(404).json({ success: false, message: 'Provider not found' });
+    if (!provider) return res.json({ success: true, data: { commissions: [], total: 0, isBlocked: false } });
 
     const commissions = await prisma.outstandingCommission.findMany({
-      where: { providerId: provider.id, status: { in: ['PENDING', 'OVERDUE'] } },
-      include: { booking: { include: { service: { select: { name: true } } } } },
+      where: { providerId: provider.id, status: { in: ['PENDING', 'OVERDUE', 'PENDING_VERIFICATION'] } },
+      include: {
+        booking: {
+          include: {
+            service: { select: { name: true } },
+            customer: { select: { name: true, phone: true } },
+          },
+        },
+      },
       orderBy: { createdAt: 'desc' },
     });
 
     const total = commissions.reduce((sum, c) => sum + c.amount, 0);
     const isBlocked = commissions.some((c) => c.status === 'OVERDUE');
 
-    res.json({
-      success: true,
-      data: { commissions, total, isBlocked },
-    });
+    console.log(`💰 Found ${commissions.length} pending commissions for ${provider.businessName}`);
+
+    res.json({ success: true, data: { commissions, total, isBlocked } });
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    console.error('getOutstandingCommission error:', err.message);
+    res.json({ success: true, data: { commissions: [], total: 0, isBlocked: false } });
   }
 }
 

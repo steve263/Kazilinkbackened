@@ -250,6 +250,36 @@ async function applyDirectMigrations() {
      )`
   );
 
+  // ── Backfill commissions for existing COMPLETED Fundi bookings ───────────────
+
+  await safeQuery(
+    'Backfill OutstandingCommission for completed Fundi bookings',
+    `INSERT INTO "OutstandingCommission" (
+       "id", "providerId", "bookingId",
+       "cashAmount", "commissionAmount", "amount",
+       "status", "dueDate", "dueAt", "reminderCount",
+       "createdAt", "updatedAt"
+     )
+     SELECT
+       gen_random_uuid()::text,
+       b."providerId",
+       b.id,
+       b."totalAmount",
+       ROUND(b."totalAmount" * 0.10),
+       ROUND(b."totalAmount" * 0.10),
+       'PENDING',
+       NOW() + INTERVAL '24 hours',
+       NOW() + INTERVAL '24 hours',
+       0,
+       NOW(),
+       NOW()
+     FROM "Booking" b
+     JOIN "Provider" p ON p.id = b."providerId"
+     WHERE b.status = 'COMPLETED'
+       AND p.category = 'FUNDI'
+       AND b.id NOT IN (SELECT "bookingId" FROM "OutstandingCommission")`
+  );
+
   await client.end();
   console.log('[pre-deploy] All migrations attempted.');
 }

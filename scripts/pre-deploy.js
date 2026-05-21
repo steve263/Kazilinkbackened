@@ -112,17 +112,43 @@ async function applyDirectMigrations() {
 
     console.log('[pre-deploy] Subscription backfill complete');
 
-    // ── Fix Subscription enum columns if they were created as TEXT ─────────────
-    // If plan/status are TEXT (from a failed earlier db push), cast them to enums
+    // ── Subscription table — ensure all columns exist ──────────────────────────
+    const subscriptionCols = [
+      `ALTER TABLE "Subscription" ADD COLUMN IF NOT EXISTS "currentPeriodStart" TIMESTAMP(3)`,
+      `ALTER TABLE "Subscription" ADD COLUMN IF NOT EXISTS "currentPeriodEnd"   TIMESTAMP(3)`,
+      `ALTER TABLE "Subscription" ADD COLUMN IF NOT EXISTS "amount"             DOUBLE PRECISION`,
+      `ALTER TABLE "Subscription" ADD COLUMN IF NOT EXISTS "mpesaRef"           TEXT`,
+      `ALTER TABLE "Subscription" ADD COLUMN IF NOT EXISTS "autoRenew"          BOOLEAN NOT NULL DEFAULT true`,
+      `ALTER TABLE "Subscription" ADD COLUMN IF NOT EXISTS "updatedAt"          TIMESTAMP(3) NOT NULL DEFAULT NOW()`,
+    ];
+    for (const sql of subscriptionCols) {
+      await client.query(sql);
+    }
+    console.log('[pre-deploy] Subscription columns ready');
+
+    // ── SubscriptionPayment table — ensure all columns exist ───────────────────
     await client.query(`
-      DO $$ BEGIN
-        ALTER TABLE "Subscription"
-          ALTER COLUMN "plan"   TYPE "SubscriptionPlan"   USING "plan"::"SubscriptionPlan",
-          ALTER COLUMN "status" TYPE "SubscriptionStatus" USING "status"::"SubscriptionStatus";
-      EXCEPTION WHEN others THEN NULL;
-      END $$;
+      CREATE TABLE IF NOT EXISTS "SubscriptionPayment" (
+        "id"             TEXT             NOT NULL,
+        "subscriptionId" TEXT             NOT NULL,
+        "amount"         DOUBLE PRECISION NOT NULL,
+        "mpesaRef"       TEXT,
+        "phone"          TEXT             NOT NULL DEFAULT '',
+        "status"         TEXT             NOT NULL DEFAULT 'PENDING',
+        "paidAt"         TIMESTAMP(3),
+        "createdAt"      TIMESTAMP(3)     NOT NULL DEFAULT NOW(),
+        CONSTRAINT "SubscriptionPayment_pkey" PRIMARY KEY ("id")
+      );
     `);
-    console.log('[pre-deploy] Subscription enum columns verified');
+    const subPaymentCols = [
+      `ALTER TABLE "SubscriptionPayment" ADD COLUMN IF NOT EXISTS "mpesaRef" TEXT`,
+      `ALTER TABLE "SubscriptionPayment" ADD COLUMN IF NOT EXISTS "phone"    TEXT NOT NULL DEFAULT ''`,
+      `ALTER TABLE "SubscriptionPayment" ADD COLUMN IF NOT EXISTS "paidAt"   TIMESTAMP(3)`,
+    ];
+    for (const sql of subPaymentCols) {
+      await client.query(sql);
+    }
+    console.log('[pre-deploy] SubscriptionPayment columns ready');
 
     // ── OutstandingCommission columns ──────────────────────────────────────────
     // Table may exist from an older migration without all columns — add them safely

@@ -699,9 +699,16 @@ enum BookingStatus {
 
 enum PaymentStatus {
   UNPAID
+  PENDING
   PAID
+  FAILED
   REFUNDED
+  REFUND_REQUESTED
   CASH
+  NOT_REQUIRED
+  PAY_AT_VENUE
+  CASH_OR_MPESA
+  PENDING_VERIFICATION
 }
 
 enum PaymentTxStatus {

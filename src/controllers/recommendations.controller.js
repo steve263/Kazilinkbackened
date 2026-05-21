@@ -50,7 +50,7 @@ async function getRecommendations(req, res) {
         isVerified: true,
         id: { notIn: [...seenProviders] },
       },
-      include: { user: { select: { location: true } } },
+      include: { user: { select: { location: true } }, subscription: { select: { plan: true, status: true } } },
       orderBy: { rating: 'desc' },
       take: 6,
     });
@@ -61,15 +61,26 @@ async function getRecommendations(req, res) {
       provider: p,
     }));
 
-    // 3. Top rated providers
-    const topRated = await prisma.provider.findMany({
+    // 3. Top rated providers — PREMIUM/GROWTH boosted to front
+    const topRatedRaw = await prisma.provider.findMany({
       where: { isVerified: true, rating: { gte: 4.0 } },
-      include: { user: { select: { location: true } } },
+      include: { user: { select: { location: true } }, subscription: { select: { plan: true, status: true } } },
       orderBy: [{ rating: 'desc' }, { totalReviews: 'desc' }],
-      take: 6,
+      take: 12,
     });
 
-    const top = topRated.map(p => ({
+    const subTier = (p) => {
+      const s = p.subscription;
+      if (!s || s.status !== 'ACTIVE') return 0;
+      return s.plan === 'PREMIUM' ? 3 : s.plan === 'GROWTH' ? 2 : s.plan === 'STARTER' ? 1 : 0;
+    };
+
+    topRatedRaw.sort((a, b) => {
+      const tierDiff = subTier(b) - subTier(a);
+      return tierDiff !== 0 ? tierDiff : (b.rating || 0) - (a.rating || 0);
+    });
+
+    const top = topRatedRaw.slice(0, 6).map(p => ({
       type: 'top_rated',
       reason: 'Highly rated by customers',
       provider: p,
@@ -164,7 +175,7 @@ async function getTrending(req, res) {
     const providerIds = trending.map(t => t.providerId);
     const providers = await prisma.provider.findMany({
       where: { id: { in: providerIds }, isVerified: true },
-      include: { user: { select: { location: true } } },
+      include: { user: { select: { location: true } }, subscription: { select: { plan: true, status: true } } },
     });
 
     const result = trending

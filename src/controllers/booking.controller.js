@@ -1155,9 +1155,8 @@ async function markCashPaid(req, res) {
 
     const now = new Date();
     await prisma.$transaction(async (tx) => {
-      // Use raw SQL to avoid ::PaymentStatus enum cast (CASH may not exist in DB enum)
       await tx.$executeRawUnsafe(
-        `UPDATE "Booking" SET "cashPaid" = true, "cashPaidAt" = $1, "paymentStatus" = 'CASH' WHERE id = $2`,
+        `UPDATE "Booking" SET "cashPaid" = true, "cashPaidAt" = $1 WHERE id = $2`,
         now, bookingId
       );
 

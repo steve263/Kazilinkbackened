@@ -21,8 +21,16 @@ const PROVIDER_SELECT = {
   },
   services: { where: { isActive: true }, take: 3 },
   promotions: { where: activePromoWhere, orderBy: { endDate: 'asc' }, take: 1 },
+  subscription: { select: { plan: true, status: true } },
   _count: { select: { waitlist: { where: { notified: false } } } },
 };
+
+// PREMIUM=3, GROWTH=2, STARTER=1, anything else=0
+function planTier(p) {
+  const sub = p.subscription;
+  if (!sub || sub.status !== 'ACTIVE') return 0;
+  return sub.plan === 'PREMIUM' ? 3 : sub.plan === 'GROWTH' ? 2 : sub.plan === 'STARTER' ? 1 : 0;
+}
 
 async function getProviders(req, res) {
   try {
@@ -49,7 +57,20 @@ async function getProviders(req, res) {
           ...p,
           distanceKm: p.user.lat ? distanceKm(uLat, uLng, p.user.lat, p.user.lng) : null,
         }))
-        .sort((a, b) => (a.distanceKm ?? 999) - (b.distanceKm ?? 999));
+        // Within same 2 km bucket: Premium/Growth win; otherwise closest first
+        .sort((a, b) => {
+          const bucketA = Math.floor((a.distanceKm ?? 999) / 2);
+          const bucketB = Math.floor((b.distanceKm ?? 999) / 2);
+          if (bucketA !== bucketB) return bucketA - bucketB;
+          const tierDiff = planTier(b) - planTier(a);
+          return tierDiff !== 0 ? tierDiff : (b.rating || 0) - (a.rating || 0);
+        });
+    } else {
+      // No distance filter — plan tier is the primary sort
+      providers.sort((a, b) => {
+        const tierDiff = planTier(b) - planTier(a);
+        return tierDiff !== 0 ? tierDiff : (b.rating || 0) - (a.rating || 0);
+      });
     }
 
     res.json({ success: true, data: providers });
@@ -268,6 +289,7 @@ async function getNearbyProviders(req, res) {
       include: {
         user: { select: { name: true, isOnline: true, lat: true, lng: true, location: true } },
         services: { where: { isActive: true }, take: 2 },
+        subscription: { select: { plan: true, status: true } },
       },
     });
 
@@ -279,7 +301,12 @@ async function getNearbyProviders(req, res) {
       .filter((p) => p.user.lat && p.user.lng)
       .map((p) => ({ ...p, distanceKm: distanceKm(uLat, uLng, p.user.lat, p.user.lng) }))
       .filter((p) => p.distanceKm <= r)
-      .sort((a, b) => a.distanceKm - b.distanceKm);
+      .sort((a, b) => {
+        const bucketA = Math.floor(a.distanceKm / 2);
+        const bucketB = Math.floor(b.distanceKm / 2);
+        if (bucketA !== bucketB) return bucketA - bucketB;
+        return planTier(b) - planTier(a);
+      });
 
     console.log(`📍 Found ${nearby.length} providers within ${r} km of (${uLat},${uLng})`);
     res.json({ success: true, data: nearby });

@@ -112,7 +112,7 @@ router.put('/subscriptions/:id/confirm-payment', ...adminOnly, async (req, res) 
 
     // Use raw SQL to avoid Prisma's ::SubscriptionStatus enum cast (enum may not exist in DB)
     await prisma.$executeRawUnsafe(
-      `UPDATE "SubscriptionPayment" SET status = 'PAID', "paidAt" = $1, "updatedAt" = NOW() WHERE id = $2`,
+      `UPDATE "SubscriptionPayment" SET status = 'PAID', "paidAt" = $1 WHERE id = $2`,
       now, paymentId
     );
 
@@ -151,7 +151,7 @@ router.put('/subscriptions/:id/confirm-payment', ...adminOnly, async (req, res) 
 router.put('/subscriptions/payments/:paymentId/reject', ...adminOnly, async (req, res) => {
   try {
     await prisma.$executeRawUnsafe(
-      `UPDATE "SubscriptionPayment" SET status = 'REJECTED', "updatedAt" = NOW() WHERE id = $1`,
+      `UPDATE "SubscriptionPayment" SET status = 'REJECTED' WHERE id = $1`,
       req.params.paymentId
     );
     res.json({ success: true, data: { message: 'Payment rejected' } });

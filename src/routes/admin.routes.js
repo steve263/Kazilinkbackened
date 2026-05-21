@@ -63,6 +63,34 @@ router.post('/broadcast',                     ...adminOnly, ctrl.broadcastAnnoun
 router.get('/auto-suspension/candidates',     ...adminOnly, ctrl.getAutoSuspensionCandidates);
 router.post('/auto-suspension/run',           ...adminOnly, ctrl.runAutoSuspension);
 
+// Commission enforcement — suspend/unsuspend provider for unpaid commission
+router.put('/commissions/:id/suspend-provider', ...adminOnly, async (req, res) => {
+  try {
+    const commission = await prisma.outstandingCommission.findUnique({
+      where: { id: req.params.id },
+      include: { provider: { include: { user: true } } },
+    });
+    if (!commission) return res.status(404).json({ success: false, message: 'Commission not found' });
+
+    await prisma.provider.update({
+      where: { id: commission.providerId },
+      data: { status: 'SUSPENDED' },
+    });
+
+    await notificationSvc.createNotification({
+      userId: commission.provider.userId,
+      type: 'SYSTEM',
+      title: '🚫 Account Suspended',
+      body: `Your account has been suspended due to unpaid commission of KSh ${commission.amount}. Pay via Paybill 247247 (Account: 0795542312) and submit your Equity Bank confirmation to reactivate.`,
+      bookingId: commission.bookingId,
+    }).catch(console.error);
+
+    res.json({ success: true, data: { message: 'Provider suspended for unpaid commission' } });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 // Disputes
 router.get('/disputes',              ...adminOnly, ctrl.getDisputes);
 router.get('/disputes/:id',          ...adminOnly, ctrl.getDisputeDetail);

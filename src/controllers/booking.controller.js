@@ -1153,11 +1153,13 @@ async function markCashPaid(req, res) {
     const commissionAmount = Math.round(booking.totalAmount * commissionRate);
     const dueAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
 
+    const now = new Date();
     await prisma.$transaction(async (tx) => {
-      await tx.booking.update({
-        where: { id: bookingId },
-        data: { cashPaid: true, cashPaidAt: new Date(), paymentStatus: 'CASH' },
-      });
+      // Use raw SQL to avoid ::PaymentStatus enum cast (CASH may not exist in DB enum)
+      await tx.$executeRawUnsafe(
+        `UPDATE "Booking" SET "cashPaid" = true, "cashPaidAt" = $1, "paymentStatus" = 'CASH' WHERE id = $2`,
+        now, bookingId
+      );
 
       await tx.outstandingCommission.create({
         data: {

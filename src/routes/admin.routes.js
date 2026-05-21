@@ -103,36 +103,44 @@ router.put('/subscriptions/:id/extend',   ...adminOnly, ctrl.extendSubscription)
 router.put('/subscriptions/:id/confirm-payment', ...adminOnly, async (req, res) => {
   try {
     const { paymentId, plan } = req.body;
-    const planNames  = { STARTER: 'Starter', GROWTH: 'Growth', PREMIUM: 'Premium' };
-    const planPrices = { STARTER: 800, GROWTH: 1200, PREMIUM: 1500 };
-
-    await prisma.subscriptionPayment.update({
-      where: { id: paymentId },
-      data: { status: 'PAID', paidAt: new Date() },
-    });
+    const planName = plan || 'STARTER';
+    const planNames = { STARTER: 'Starter', GROWTH: 'Growth', PREMIUM: 'Premium' };
 
     const now = new Date();
     const periodEnd = new Date();
     periodEnd.setDate(periodEnd.getDate() + 30);
 
-    const sub = await prisma.subscription.update({
+    // Use raw SQL to avoid Prisma's ::SubscriptionStatus enum cast (enum may not exist in DB)
+    await prisma.$executeRawUnsafe(
+      `UPDATE "SubscriptionPayment" SET status = 'PAID', "paidAt" = $1, "updatedAt" = NOW() WHERE id = $2`,
+      now, paymentId
+    );
+
+    await prisma.$executeRawUnsafe(
+      `UPDATE "Subscription" SET status = 'ACTIVE', plan = $1, "currentPeriodStart" = $2, "currentPeriodEnd" = $3, "updatedAt" = NOW() WHERE id = $4`,
+      planName, now, periodEnd, req.params.id
+    );
+
+    // Read provider info for notification (SELECT doesn't have enum cast issues)
+    const sub = await prisma.subscription.findUnique({
       where: { id: req.params.id },
-      data: { status: 'ACTIVE', plan: plan || 'STARTER', currentPeriodStart: now, currentPeriodEnd: periodEnd },
       include: { provider: { include: { user: true } } },
     });
 
-    await notificationSvc.createNotification({
-      userId: sub.provider.userId,
-      type: 'SYSTEM',
-      title: '✅ Subscription Activated!',
-      body: `Your ${planNames[plan] || 'Starter'} plan is now active for 30 days until ${periodEnd.toLocaleDateString('en-KE')}. Keep receiving bookings!`,
-    });
+    if (sub?.provider?.userId) {
+      await notificationSvc.createNotification({
+        userId: sub.provider.userId,
+        type: 'SYSTEM',
+        title: '✅ Subscription Activated!',
+        body: `Your ${planNames[planName] || 'Starter'} plan is now active for 30 days until ${periodEnd.toLocaleDateString('en-KE')}. Keep receiving bookings!`,
+      });
 
-    const smsSvc = require('../services/sms.service');
-    smsSvc.sendSMS(
-      sub.provider.user.phone,
-      `KaziShow: Your ${planNames[plan] || 'Starter'} subscription is now ACTIVE for 30 days! Keep getting bookings on kazishow.co.ke`
-    ).catch(console.error);
+      const smsSvc = require('../services/sms.service');
+      smsSvc.sendSMS(
+        sub.provider.user.phone,
+        `KaziShow: Your ${planNames[planName] || 'Starter'} subscription is now ACTIVE for 30 days! Keep getting bookings on kazishow.co.ke`
+      ).catch(console.error);
+    }
 
     res.json({ success: true, data: { message: 'Subscription activated' } });
   } catch (err) {
@@ -142,10 +150,10 @@ router.put('/subscriptions/:id/confirm-payment', ...adminOnly, async (req, res) 
 
 router.put('/subscriptions/payments/:paymentId/reject', ...adminOnly, async (req, res) => {
   try {
-    await prisma.subscriptionPayment.update({
-      where: { id: req.params.paymentId },
-      data: { status: 'REJECTED' },
-    });
+    await prisma.$executeRawUnsafe(
+      `UPDATE "SubscriptionPayment" SET status = 'REJECTED', "updatedAt" = NOW() WHERE id = $1`,
+      req.params.paymentId
+    );
     res.json({ success: true, data: { message: 'Payment rejected' } });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });

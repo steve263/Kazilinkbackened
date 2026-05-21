@@ -24,6 +24,22 @@ async function applyDirectMigrations() {
     // Add PENDING_VERIFICATION to CommissionStatus (manual Paybill flow)
     await client.query(`ALTER TYPE "CommissionStatus" ADD VALUE IF NOT EXISTS 'PENDING_VERIFICATION';`);
 
+    // Create SubscriptionPlan enum if it doesn't exist yet
+    await client.query(`
+      DO $$ BEGIN
+        CREATE TYPE "SubscriptionPlan" AS ENUM ('STARTER', 'GROWTH', 'PREMIUM');
+      EXCEPTION WHEN duplicate_object THEN NULL;
+      END $$;
+    `);
+
+    // Create SubscriptionStatus enum if it doesn't exist yet
+    await client.query(`
+      DO $$ BEGIN
+        CREATE TYPE "SubscriptionStatus" AS ENUM ('TRIAL', 'ACTIVE', 'EXPIRED', 'SUSPENDED', 'CANCELLED');
+      EXCEPTION WHEN duplicate_object THEN NULL;
+      END $$;
+    `);
+
     console.log('[pre-deploy] Enums ready');
 
     // ── Booking columns ────────────────────────────────────────────────────────
@@ -95,6 +111,18 @@ async function applyDirectMigrations() {
     `);
 
     console.log('[pre-deploy] Subscription backfill complete');
+
+    // ── Fix Subscription enum columns if they were created as TEXT ─────────────
+    // If plan/status are TEXT (from a failed earlier db push), cast them to enums
+    await client.query(`
+      DO $$ BEGIN
+        ALTER TABLE "Subscription"
+          ALTER COLUMN "plan"   TYPE "SubscriptionPlan"   USING "plan"::"SubscriptionPlan",
+          ALTER COLUMN "status" TYPE "SubscriptionStatus" USING "status"::"SubscriptionStatus";
+      EXCEPTION WHEN others THEN NULL;
+      END $$;
+    `);
+    console.log('[pre-deploy] Subscription enum columns verified');
 
     // ── OutstandingCommission columns ──────────────────────────────────────────
     // Table may exist from an older migration without all columns — add them safely

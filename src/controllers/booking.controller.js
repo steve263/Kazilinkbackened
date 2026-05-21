@@ -1125,10 +1125,15 @@ async function completeReferralIfFirst(customerId, customerUser) {
   console.log(`💰 Referral reward paid: KSh 200 to ${referral.referrer.name}`);
 }
 
-// ── MARK CASH PAID (provider marks that customer paid cash) ────────────────────
+// ── MARK CASH PAID (provider submits Equity Bank message after paying commission)
 async function markCashPaid(req, res) {
   try {
     const bookingId = req.params.id;
+    const { mpesaCode, commissionAmount: bodyCommission, totalAmount: bodyTotal } = req.body;
+
+    if (!mpesaCode || mpesaCode.trim().length < 10) {
+      return res.status(400).json({ success: false, message: 'Please paste your full Equity Bank confirmation message' });
+    }
 
     const booking = await prisma.booking.findUnique({
       where: { id: bookingId },
@@ -1140,21 +1145,18 @@ async function markCashPaid(req, res) {
       return res.status(403).json({ success: false, message: 'Not authorized' });
     }
     if (!['IN_PROGRESS', 'COMPLETED'].includes(booking.status)) {
-      return res.status(400).json({ success: false, message: 'Can only mark cash paid for in-progress or completed bookings' });
-    }
-    if (booking.cashPaid) {
-      return res.status(400).json({ success: false, message: 'Cash already marked as paid for this booking' });
+      return res.status(400).json({ success: false, message: 'Can only record cash payment for in-progress or completed bookings' });
     }
     if (booking.paymentStatus === 'PAID') {
-      return res.status(400).json({ success: false, message: 'This booking was paid via M-Pesa, not cash' });
+      return res.status(400).json({ success: false, message: 'This booking was already paid via M-Pesa' });
     }
 
     const commissionRate = parseFloat(process.env.COMMISSION_RATE) || 0.10;
-    const commissionAmount = Math.round(booking.totalAmount * commissionRate);
-
+    const commission = bodyCommission || Math.round((bodyTotal || booking.totalAmount) * commissionRate);
     const dueDate = new Date();
     dueDate.setHours(dueDate.getHours() + 24);
     const now = new Date();
+    const equityMsg = mpesaCode.trim();
 
     await prisma.$transaction(async (tx) => {
       await tx.$executeRawUnsafe(
@@ -1162,37 +1164,48 @@ async function markCashPaid(req, res) {
         now, bookingId
       );
 
-      await tx.outstandingCommission.create({
-        data: {
+      await tx.outstandingCommission.upsert({
+        where: { bookingId },
+        create: {
           bookingId,
           providerId: booking.providerId,
           cashAmount: booking.totalAmount || 0,
-          commissionAmount: commissionAmount || 0,
-          amount: commissionAmount || 0,
+          commissionAmount: commission,
+          amount: commission,
           reminderCount: 0,
-          status: 'PENDING',
+          status: 'PENDING_VERIFICATION',
+          mpesaRef: equityMsg,
+          dueAt: dueDate,
+          dueDate,
+        },
+        update: {
+          status: 'PENDING_VERIFICATION',
+          mpesaRef: equityMsg,
           dueAt: dueDate,
           dueDate,
         },
       });
     });
 
-    notificationSvc.createNotification({
-      userId: booking.provider.userId,
-      type: 'SYSTEM',
-      title: '💵 Cash Recorded — Commission Due',
-      body: `You received KSh ${booking.totalAmount} cash. Please pay KSh ${commissionAmount} commission to KaziShow within 24 hours to keep your account active.`,
-      bookingId,
-    }).catch(console.error);
+    // Notify all admins
+    const admins = await prisma.user.findMany({ where: { role: 'ADMIN' } });
+    for (const admin of admins) {
+      notificationSvc.createNotification({
+        userId: admin.id,
+        type: 'SYSTEM',
+        title: '💰 Commission Payment — Verify Now!',
+        body: `${booking.provider.businessName} submitted Equity Bank message for KSh ${commission} commission. Check account 0795542312 and confirm.`,
+      }).catch(console.error);
+    }
 
-    console.log(`💵 Cash marked for booking ${bookingId} — Commission KSh ${commissionAmount} due`);
+    console.log(`💰 Commission submitted by ${booking.provider.businessName} — KSh ${commission}`);
 
     res.json({
       success: true,
       data: {
-        commissionAmount,
+        message: 'Commission payment submitted. Admin will verify within 1 hour.',
+        commissionAmount: commission,
         dueDate,
-        message: `Please pay KSh ${commissionAmount} commission within 24 hours`,
       },
     });
   } catch (err) {
@@ -1434,7 +1447,7 @@ async function confirmCommissionPayment(req, res) {
   try {
     const commission = await prisma.outstandingCommission.findUnique({
       where: { id: req.params.id },
-      include: { provider: { include: { user: true } } },
+      include: { provider: { include: { user: true } }, booking: { include: { service: true } } },
     });
     if (!commission) return res.status(404).json({ success: false, message: 'Commission not found' });
 
@@ -1443,15 +1456,24 @@ async function confirmCommissionPayment(req, res) {
       data: { status: 'PAID', paidAt: new Date() },
     });
 
+    const serviceName = commission.booking?.service?.name || 'Service';
+    const amount = commission.commissionAmount || commission.amount;
+
     notificationSvc.createNotification({
       userId: commission.provider.userId,
       type: 'SYSTEM',
-      title: '✅ Commission Payment Confirmed!',
-      body: `Your KSh ${commission.amount} commission has been verified and your account is now fully active. Keep getting bookings!`,
+      title: '✅ Commission Confirmed!',
+      body: `Your commission of KSh ${amount} for ${serviceName} has been confirmed. Your account is fully active. Keep getting bookings!`,
       bookingId: commission.bookingId,
     }).catch(console.error);
 
-    res.json({ success: true, data: { message: 'Commission payment confirmed' } });
+    smsSvc.sendSMS(
+      commission.provider.user.phone,
+      `KaziShow: ✅ Your commission of KSh ${amount} has been confirmed! Your account is active. Keep getting bookings on kazishow.co.ke`
+    ).catch(console.error);
+
+    console.log(`✅ Commission confirmed: KSh ${amount} from ${commission.provider.businessName}`);
+    res.json({ success: true, data: { message: 'Commission confirmed and Fundi notified' } });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -1472,15 +1494,23 @@ async function rejectCommissionPayment(req, res) {
       data: { status: 'PENDING', mpesaRef: null },
     });
 
+    const amount = commission.commissionAmount || commission.amount;
+    const rejectMsg = reason || `Please pay KSh ${amount} to Paybill 247247 Account 0795542312 and submit the correct message.`;
+
     notificationSvc.createNotification({
       userId: commission.provider.userId,
       type: 'SYSTEM',
-      title: '❌ Commission Payment Rejected',
-      body: `Your commission payment message could not be verified. ${reason ? reason + '. ' : ''}Please pay KSh ${commission.amount} via Paybill 247247 and submit again.`,
+      title: '❌ Commission Code Rejected',
+      body: `Your Equity Bank message was not verified. ${rejectMsg}`,
       bookingId: commission.bookingId,
     }).catch(console.error);
 
-    res.json({ success: true, data: { message: 'Commission payment rejected' } });
+    smsSvc.sendSMS(
+      commission.provider.user.phone,
+      `KaziShow: ❌ Your commission message was rejected. ${rejectMsg}`
+    ).catch(console.error);
+
+    res.json({ success: true, data: { message: 'Commission rejected and Fundi notified' } });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }

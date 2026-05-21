@@ -419,13 +419,17 @@ function initReminders() {
     }
   }, { timezone: 'Africa/Nairobi' });
 
-  // ── Hourly: mark overdue commissions and block providers ─────────────────────
+  // ── Hourly: mark overdue commissions and suspend providers ───────────────────
   cron.schedule('0 * * * *', async () => {
     try {
       const now = new Date();
 
+      // Include PENDING_VERIFICATION — if admin hasn't confirmed within 24h, still suspend
       const overdue = await prisma.outstandingCommission.findMany({
-        where: { status: 'PENDING', dueAt: { lte: now } },
+        where: {
+          status: { in: ['PENDING', 'PENDING_VERIFICATION'] },
+          dueDate: { lte: now },
+        },
         include: {
           provider: {
             include: { user: { select: { id: true, name: true, phone: true, deviceToken: true } } },
@@ -434,6 +438,14 @@ function initReminders() {
       });
 
       for (const commission of overdue) {
+        const amount = commission.commissionAmount || commission.amount;
+
+        // Suspend the provider's user account
+        await prisma.user.update({
+          where: { id: commission.provider.userId },
+          data: { isSuspended: true },
+        });
+
         await prisma.outstandingCommission.update({
           where: { id: commission.id },
           data: { status: 'OVERDUE' },
@@ -442,8 +454,8 @@ function initReminders() {
         await notifSvc.createNotification({
           userId: commission.provider.userId,
           type: 'SYSTEM',
-          title: '🚨 Commission Overdue — App Blocked!',
-          body: `Your KSh ${commission.amount} commission is overdue. Your app is now blocked until you pay. Open the app to pay now.`,
+          title: '🚨 Account Suspended — Unpaid Commission',
+          body: `Your account has been suspended because KSh ${amount} commission was not paid within 24 hours. Pay via Paybill 247247 Account 0795542312 and contact support to reactivate.`,
           bookingId: commission.bookingId,
         }).catch(console.error);
 
@@ -451,22 +463,22 @@ function initReminders() {
           const firebaseSvc = require('./firebase.service');
           firebaseSvc.sendPushNotification({
             deviceToken: commission.provider.user.deviceToken,
-            title: '🚨 App Blocked — Pay Commission Now!',
-            body: `KSh ${commission.amount} commission overdue. Tap to pay and unlock your account immediately.`,
-            data: { url: '/provider/notifications', type: 'COMMISSION_OVERDUE' },
+            title: '🚨 Account Suspended!',
+            body: `KSh ${amount} commission unpaid. Pay Paybill 247247 Account 0795542312 to reactivate.`,
+            data: { url: '/provider/commission', type: 'COMMISSION_OVERDUE' },
           }).catch(console.error);
         }
 
         await smsSvc.sendSMS(
           commission.provider.user.phone,
-          `KaziShow URGENT: Your KSh ${commission.amount} commission is overdue. Your app is now blocked. Pay now via the app to unlock your account immediately.`
+          `KaziShow: 🚨 Your account has been SUSPENDED due to unpaid commission of KSh ${amount}. Pay via Paybill 247247, Account 0795542312 and WhatsApp 0795542312 to reactivate.`
         ).catch(console.error);
 
-        console.log(`🚨 Commission overdue: KSh ${commission.amount} for ${commission.provider.businessName}`);
+        console.log(`🚨 Account suspended: ${commission.provider.businessName} — unpaid commission KSh ${amount}`);
       }
 
       if (overdue.length > 0) {
-        console.log(`🚨 Marked ${overdue.length} commission(s) as overdue`);
+        console.log(`🚨 Suspended ${overdue.length} provider(s) for unpaid commission`);
       }
     } catch (err) {
       console.error('❌ Commission overdue cron error:', err.message);

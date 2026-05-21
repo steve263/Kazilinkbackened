@@ -24,6 +24,15 @@ async function applyDirectMigrations() {
     // Add PENDING_VERIFICATION to CommissionStatus (manual Paybill flow)
     await client.query(`ALTER TYPE "CommissionStatus" ADD VALUE IF NOT EXISTS 'PENDING_VERIFICATION';`);
 
+    // Add CASH to PaymentStatus (cash payment method)
+    await client.query(`
+      DO $$ BEGIN
+        CREATE TYPE "PaymentStatus" AS ENUM ('UNPAID', 'PAID', 'REFUNDED', 'CASH');
+      EXCEPTION WHEN duplicate_object THEN NULL;
+      END $$;
+    `);
+    await client.query(`ALTER TYPE "PaymentStatus" ADD VALUE IF NOT EXISTS 'CASH';`);
+
     // Create SubscriptionPlan enum if it doesn't exist yet
     await client.query(`
       DO $$ BEGIN

@@ -993,7 +993,7 @@ async function getAdminSubscriptions(req, res) {
         where,
         include: {
           provider: { include: { user: { select: { name: true, phone: true, email: true } } } },
-          payments: { orderBy: { createdAt: 'desc' }, take: 3 },
+          payments: { orderBy: { createdAt: 'desc' }, take: 5 },
         },
         orderBy: { updatedAt: 'desc' },
         skip: (Number(page) - 1) * Number(limit),

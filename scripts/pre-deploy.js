@@ -21,6 +21,9 @@ async function applyDirectMigrations() {
       END $$;
     `);
 
+    // Add PENDING_VERIFICATION to CommissionStatus (manual Paybill flow)
+    await client.query(`ALTER TYPE "CommissionStatus" ADD VALUE IF NOT EXISTS 'PENDING_VERIFICATION';`);
+
     console.log('[pre-deploy] Enums ready');
 
     // ── Booking columns ────────────────────────────────────────────────────────

@@ -2,6 +2,7 @@ const router = require('express').Router();
 const { auth, requireRole } = require('../middleware/auth');
 const ctrl = require('../controllers/admin.controller');
 const prisma = require('../config/db');
+const notificationSvc = require('../services/notification.service');
 const testimonialCtrl = require('../controllers/testimonial.controller');
 const tipCtrl = require('../controllers/tip.controller');
 const { getAdminWithdrawals, processWithdrawal } = require('../controllers/withdrawal.controller');
@@ -98,6 +99,58 @@ router.get('/subscriptions',              ...adminOnly, ctrl.getAdminSubscriptio
 router.get('/subscriptions/stats',        ...adminOnly, ctrl.getAdminSubscriptionStats);
 router.put('/subscriptions/:id/waive',    ...adminOnly, ctrl.waiveSubscription);
 router.put('/subscriptions/:id/extend',   ...adminOnly, ctrl.extendSubscription);
+
+router.put('/subscriptions/:id/confirm-payment', ...adminOnly, async (req, res) => {
+  try {
+    const { paymentId, plan } = req.body;
+    const planNames  = { STARTER: 'Starter', GROWTH: 'Growth', PREMIUM: 'Premium' };
+    const planPrices = { STARTER: 800, GROWTH: 1200, PREMIUM: 1500 };
+
+    await prisma.subscriptionPayment.update({
+      where: { id: paymentId },
+      data: { status: 'PAID', paidAt: new Date() },
+    });
+
+    const now = new Date();
+    const periodEnd = new Date();
+    periodEnd.setDate(periodEnd.getDate() + 30);
+
+    const sub = await prisma.subscription.update({
+      where: { id: req.params.id },
+      data: { status: 'ACTIVE', plan: plan || 'STARTER', currentPeriodStart: now, currentPeriodEnd: periodEnd },
+      include: { provider: { include: { user: true } } },
+    });
+
+    await notificationSvc.createNotification({
+      userId: sub.provider.userId,
+      type: 'SYSTEM',
+      title: '✅ Subscription Activated!',
+      body: `Your ${planNames[plan] || 'Starter'} plan is now active for 30 days until ${periodEnd.toLocaleDateString('en-KE')}. Keep receiving bookings!`,
+    });
+
+    const smsSvc = require('../services/sms.service');
+    smsSvc.sendSMS(
+      sub.provider.user.phone,
+      `KaziShow: Your ${planNames[plan] || 'Starter'} subscription is now ACTIVE for 30 days! Keep getting bookings on kazishow.co.ke`
+    ).catch(console.error);
+
+    res.json({ success: true, data: { message: 'Subscription activated' } });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+router.put('/subscriptions/payments/:paymentId/reject', ...adminOnly, async (req, res) => {
+  try {
+    await prisma.subscriptionPayment.update({
+      where: { id: req.params.paymentId },
+      data: { status: 'REJECTED' },
+    });
+    res.json({ success: true, data: { message: 'Payment rejected' } });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
 
 // ShowReel management (delete only — no approval flow)
 router.get('/videos',                         ...adminOnly, videoCtrl.adminGetVideos);

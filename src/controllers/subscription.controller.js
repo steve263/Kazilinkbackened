@@ -1,6 +1,6 @@
 const prisma = require('../config/db');
-const mpesaSvc = require('../services/mpesa.service');
 const subSvc = require('../services/subscription.service');
+const notificationSvc = require('../services/notification.service');
 
 async function getMySubscription(req, res) {
   try {
@@ -32,35 +32,26 @@ async function getMySubscription(req, res) {
   }
 }
 
-async function initiateSubscription(req, res) {
+async function submitSubscriptionCode(req, res) {
   try {
-    const { plan, phone } = req.body;
+    const { plan, mpesaCode } = req.body;
 
-    if (!plan || !phone) {
-      return res.status(400).json({ success: false, message: 'plan and phone are required' });
+    if (!mpesaCode || !plan) {
+      return res.status(400).json({ success: false, message: 'Plan and M-Pesa code are required' });
     }
     if (!['STARTER', 'GROWTH', 'PREMIUM'].includes(plan)) {
       return res.status(400).json({ success: false, message: 'Invalid plan' });
     }
 
-    const provider = await prisma.provider.findUnique({ where: { userId: req.user.id } });
+    const provider = await prisma.provider.findUnique({
+      where: { userId: req.user.id },
+      include: { user: true },
+    });
     if (!provider) return res.status(404).json({ success: false, message: 'Provider not found' });
 
-    const amount = subSvc.PLAN_PRICES[plan];
-    const normalPhone = phone.replace(/\s/g, '').replace(/^\+/, '').replace(/^0/, '254');
+    const planPrices = { STARTER: 800, GROWTH: 1200, PREMIUM: 1500 };
+    const amount = planPrices[plan];
 
-    const result = await mpesaSvc.stkPush({
-      phone: normalPhone,
-      amount,
-      bookingId: `SUB-${provider.id.slice(0, 8)}-${plan}`,
-      description: `KaziShow ${plan} Subscription - KSh ${amount}/month`,
-    });
-
-    if (result.ResponseCode !== '0') {
-      return res.status(400).json({ success: false, message: 'Failed to send M-Pesa prompt. Try again.' });
-    }
-
-    // Ensure subscription record exists, then save pending payment
     let subscription = await prisma.subscription.findUnique({ where: { providerId: provider.id } });
     if (!subscription) {
       subscription = await subSvc.createFreeTrial(provider.id);
@@ -71,23 +62,28 @@ async function initiateSubscription(req, res) {
         data: {
           subscriptionId: subscription.id,
           amount,
-          phone: normalPhone,
-          status: 'PENDING',
-          mpesaRef: result.CheckoutRequestID,
+          phone: provider.user.phone,
+          status: 'PENDING_VERIFICATION',
+          mpesaRef: mpesaCode,
         },
       });
     }
 
-    console.log(`💳 Subscription payment initiated: ${provider.businessName} — ${plan} — KSh ${amount}`);
+    const admins = await prisma.user.findMany({ where: { role: 'ADMIN' } });
+    for (const admin of admins) {
+      await notificationSvc.createNotification({
+        userId: admin.id,
+        type: 'SYSTEM',
+        title: '💳 Subscription Payment Submitted',
+        body: `${provider.businessName} submitted M-Pesa code ${mpesaCode} for ${plan} plan KSh ${amount}. Please verify in Equity Bank and confirm.`,
+      });
+    }
+
+    console.log(`💳 Subscription payment submitted: ${provider.businessName} — ${plan} — KSh ${amount} — code: ${mpesaCode}`);
 
     res.json({
       success: true,
-      data: {
-        checkoutRequestId: result.CheckoutRequestID,
-        amount,
-        plan,
-        message: `M-Pesa prompt sent! Enter your PIN to activate ${plan} plan for KSh ${amount}/month.`,
-      },
+      data: { message: 'Payment submitted! Admin will verify and activate your subscription within 1 hour.' },
     });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -211,7 +207,7 @@ async function getSubscriptionStats(req, res) {
 
 module.exports = {
   getMySubscription,
-  initiateSubscription,
+  submitSubscriptionCode,
   subscriptionCallback,
   getPlans,
   getAllSubscriptions,

@@ -17,7 +17,7 @@ const BOOKING_INCLUDE = {
 
 async function createBooking(req, res) {
   try {
-    const { providerId, serviceId, scheduledDate, scheduledTime, address, lat, lng, notes, paymentMethod } = req.body;
+    const { providerId, serviceId, scheduledDate, scheduledTime, address, lat, lng, notes, totalAmount: bodyAmount } = req.body;
 
     if (!providerId || !scheduledDate || !scheduledTime || !address) {
       return res.status(400).json({
@@ -48,8 +48,8 @@ async function createBooking(req, res) {
       }
     }
 
-    let totalAmount = provider.minJobValue;
-    if (serviceId) {
+    let totalAmount = bodyAmount ? parseFloat(bodyAmount) : (provider.minJobValue || 0);
+    if (!bodyAmount && serviceId) {
       const service = await prisma.service.findUnique({ where: { id: serviceId } });
       if (service && service.priceType === 'FIXED') totalAmount = service.price;
     }
@@ -69,9 +69,7 @@ async function createBooking(req, res) {
         },
       });
     }
-    const finalPaymentMethod = isFundi
-      ? (paymentMethod || 'MPESA')
-      : 'BUSINESS_DIRECT';
+    const finalPaymentMethod = isFundi ? 'CASH_OR_MPESA' : 'PAY_AT_VENUE';
 
     const booking = await prisma.$transaction(async (tx) => {
       return tx.booking.create({
@@ -1631,6 +1629,77 @@ async function disputeJob(req, res) {
   }
 }
 
+// ── GET COMMISSION FOR PAYMENT PAGE ───────────────────────────────────────────
+async function getCommissionForPayment(req, res) {
+  try {
+    const provider = await prisma.provider.findUnique({ where: { userId: req.user.id } });
+    if (!provider) return res.status(404).json({ success: false, message: 'Provider not found' });
+
+    const commissions = await prisma.outstandingCommission.findMany({
+      where: { providerId: provider.id, status: { in: ['PENDING', 'OVERDUE', 'PENDING_VERIFICATION'] } },
+      include: {
+        booking: {
+          include: {
+            service: { select: { name: true } },
+            customer: { select: { name: true } },
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const COMMISSION_RATE = parseFloat(process.env.COMMISSION_RATE || '0.10');
+    const shaped = commissions.map((c) => ({
+      ...c,
+      commissionAmount: c.amount,
+      cashAmount: COMMISSION_RATE > 0 ? Math.round(c.amount / COMMISSION_RATE) : 0,
+    }));
+
+    res.json({ success: true, data: shaped });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+// ── SUBMIT M-PESA CODE FOR COMMISSION ─────────────────────────────────────────
+async function submitCommissionCode(req, res) {
+  try {
+    const { mpesaCode } = req.body;
+    if (!mpesaCode) return res.status(400).json({ success: false, message: 'M-Pesa code is required' });
+
+    const commission = await prisma.outstandingCommission.findUnique({
+      where: { id: req.params.id },
+      include: {
+        provider: { include: { user: true } },
+        booking: { include: { service: { select: { name: true } } } },
+      },
+    });
+    if (!commission) return res.status(404).json({ success: false, message: 'Commission not found' });
+    if (commission.provider.userId !== req.user.id) {
+      return res.status(403).json({ success: false, message: 'Not authorized' });
+    }
+
+    await prisma.outstandingCommission.update({
+      where: { id: req.params.id },
+      data: { mpesaRef: mpesaCode, status: 'PENDING_VERIFICATION' },
+    });
+
+    const admins = await prisma.user.findMany({ where: { role: 'ADMIN' } });
+    for (const admin of admins) {
+      await notificationSvc.createNotification({
+        userId: admin.id,
+        type: 'SYSTEM',
+        title: '💰 Commission Payment Submitted',
+        body: `${commission.provider.businessName} submitted M-Pesa code ${mpesaCode} for commission of KSh ${commission.amount}. Please verify and confirm.`,
+      });
+    }
+
+    res.json({ success: true, data: { message: 'Payment code submitted. Admin will verify within 1 hour.' } });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
 module.exports = {
   createBooking,
   getBookings,
@@ -1655,4 +1724,6 @@ module.exports = {
   requestRefund,
   markRefundProcessed,
   sendB2CRefund,
+  getCommissionForPayment,
+  submitCommissionCode,
 };

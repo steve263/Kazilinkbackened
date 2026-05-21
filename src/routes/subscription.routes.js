@@ -4,7 +4,7 @@ const { auth, requireRole } = require('../middleware/auth');
 const ctrl = require('../controllers/subscription.controller');
 
 router.get('/my', auth, ctrl.getMySubscription);
-router.post('/subscribe', auth, ctrl.initiateSubscription);
+router.post('/submit-code', auth, ctrl.submitSubscriptionCode);
 router.post('/callback', ctrl.subscriptionCallback);
 router.get('/plans', ctrl.getPlans);
 router.get('/admin/all', auth, requireRole('ADMIN'), ctrl.getAllSubscriptions);

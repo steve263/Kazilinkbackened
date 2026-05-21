@@ -20,6 +20,8 @@ const {
   submitCommissionCode,
   getAllCommissions,
   waiveCommission,
+  confirmCommissionPayment,
+  rejectCommissionPayment,
   disputeJob,
   requestRefund,
   markRefundProcessed,
@@ -53,5 +55,7 @@ router.post('/:id/refund', auth, requireRole('CUSTOMER'), requestRefund);
 router.post('/:id/mark-cash-paid', auth, requireRole('PROVIDER'), markCashPaid);
 router.post('/commissions/:id/pay', auth, requireRole('PROVIDER'), payCommission);
 router.put('/commissions/:id/waive', auth, requireRole('ADMIN'), waiveCommission);
+router.put('/commissions/:id/confirm-payment', auth, requireRole('ADMIN'), confirmCommissionPayment);
+router.put('/commissions/:id/reject-payment', auth, requireRole('ADMIN'), rejectCommissionPayment);
 
 module.exports = router;

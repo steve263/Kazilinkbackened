@@ -1423,6 +1423,63 @@ async function waiveCommission(req, res) {
   }
 }
 
+// ── ADMIN: CONFIRM COMMISSION PAYMENT ─────────────────────────────────────────
+async function confirmCommissionPayment(req, res) {
+  try {
+    const commission = await prisma.outstandingCommission.findUnique({
+      where: { id: req.params.id },
+      include: { provider: { include: { user: true } } },
+    });
+    if (!commission) return res.status(404).json({ success: false, message: 'Commission not found' });
+
+    await prisma.outstandingCommission.update({
+      where: { id: req.params.id },
+      data: { status: 'PAID', paidAt: new Date() },
+    });
+
+    notificationSvc.createNotification({
+      userId: commission.provider.userId,
+      type: 'SYSTEM',
+      title: '✅ Commission Payment Confirmed!',
+      body: `Your KSh ${commission.amount} commission has been verified and your account is now fully active. Keep getting bookings!`,
+      bookingId: commission.bookingId,
+    }).catch(console.error);
+
+    res.json({ success: true, data: { message: 'Commission payment confirmed' } });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+// ── ADMIN: REJECT COMMISSION PAYMENT ──────────────────────────────────────────
+async function rejectCommissionPayment(req, res) {
+  try {
+    const { reason } = req.body;
+    const commission = await prisma.outstandingCommission.findUnique({
+      where: { id: req.params.id },
+      include: { provider: { include: { user: true } } },
+    });
+    if (!commission) return res.status(404).json({ success: false, message: 'Commission not found' });
+
+    await prisma.outstandingCommission.update({
+      where: { id: req.params.id },
+      data: { status: 'PENDING', mpesaRef: null },
+    });
+
+    notificationSvc.createNotification({
+      userId: commission.provider.userId,
+      type: 'SYSTEM',
+      title: '❌ Commission Payment Rejected',
+      body: `Your commission payment message could not be verified. ${reason ? reason + '. ' : ''}Please pay KSh ${commission.amount} via Paybill 247247 and submit again.`,
+      bookingId: commission.bookingId,
+    }).catch(console.error);
+
+    res.json({ success: true, data: { message: 'Commission payment rejected' } });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
 // ── CUSTOMER REQUESTS REFUND ──────────────────────────────────────────────────
 async function requestRefund(req, res) {
   try {
@@ -1726,4 +1783,6 @@ module.exports = {
   sendB2CRefund,
   getCommissionForPayment,
   submitCommissionCode,
+  confirmCommissionPayment,
+  rejectCommissionPayment,
 };

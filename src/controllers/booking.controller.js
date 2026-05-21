@@ -1151,12 +1151,14 @@ async function markCashPaid(req, res) {
 
     const commissionRate = parseFloat(process.env.COMMISSION_RATE) || 0.10;
     const commissionAmount = Math.round(booking.totalAmount * commissionRate);
-    const dueAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
 
+    const dueDate = new Date();
+    dueDate.setHours(dueDate.getHours() + 24);
     const now = new Date();
+
     await prisma.$transaction(async (tx) => {
       await tx.$executeRawUnsafe(
-        `UPDATE "Booking" SET "cashPaid" = true, "cashPaidAt" = $1 WHERE id = $2`,
+        `UPDATE "Booking" SET "cashPaid" = true, "cashPaidAt" = $1, "status" = 'COMPLETED' WHERE id = $2`,
         now, bookingId
       );
 
@@ -1164,17 +1166,17 @@ async function markCashPaid(req, res) {
         data: {
           bookingId,
           providerId: booking.providerId,
-          amount: commissionAmount || 0,
           cashAmount: booking.totalAmount || 0,
           commissionAmount: commissionAmount || 0,
+          amount: commissionAmount || 0,
           reminderCount: 0,
           status: 'PENDING',
-          dueAt,
+          dueAt: dueDate,
+          dueDate,
         },
       });
     });
 
-    // Notify provider of commission due
     notificationSvc.createNotification({
       userId: booking.provider.userId,
       type: 'SYSTEM',
@@ -1188,13 +1190,13 @@ async function markCashPaid(req, res) {
     res.json({
       success: true,
       data: {
-        message: 'Cash payment recorded. Please pay your commission to KaziShow.',
         commissionAmount,
-        dueAt,
+        dueDate,
+        message: `Please pay KSh ${commissionAmount} commission within 24 hours`,
       },
     });
   } catch (err) {
-    console.error('❌ markCashPaid error:', err.message);
+    console.error('markCashPaid error:', err.message);
     res.status(500).json({ success: false, message: err.message });
   }
 }

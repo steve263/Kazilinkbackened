@@ -630,6 +630,7 @@ model OutstandingCommission {
   mpesaRef          String?
   checkoutRequestId String?
   dueAt             DateTime         @default(now())
+  dueDate           DateTime         @default(now())
   paidAt            DateTime?
   waivedAt          DateTime?
   waivedBy          String?

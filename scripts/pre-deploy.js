@@ -208,6 +208,7 @@ async function applyDirectMigrations() {
     [`OutstandingCommission.mpesaRef`,          `ALTER TABLE "OutstandingCommission" ADD COLUMN IF NOT EXISTS "mpesaRef"          TEXT`],
     [`OutstandingCommission.checkoutRequestId`, `ALTER TABLE "OutstandingCommission" ADD COLUMN IF NOT EXISTS "checkoutRequestId" TEXT`],
     [`OutstandingCommission.dueAt`,             `ALTER TABLE "OutstandingCommission" ADD COLUMN IF NOT EXISTS "dueAt"             TIMESTAMP(3) NOT NULL DEFAULT NOW()`],
+    [`OutstandingCommission.dueDate`,           `ALTER TABLE "OutstandingCommission" ADD COLUMN IF NOT EXISTS "dueDate"           TIMESTAMP(3) NOT NULL DEFAULT NOW()`],
     [`OutstandingCommission.paidAt`,            `ALTER TABLE "OutstandingCommission" ADD COLUMN IF NOT EXISTS "paidAt"            TIMESTAMP(3)`],
     [`OutstandingCommission.waivedAt`,          `ALTER TABLE "OutstandingCommission" ADD COLUMN IF NOT EXISTS "waivedAt"          TIMESTAMP(3)`],
     [`OutstandingCommission.waivedBy`,          `ALTER TABLE "OutstandingCommission" ADD COLUMN IF NOT EXISTS "waivedBy"          TEXT`],
@@ -221,6 +222,8 @@ async function applyDirectMigrations() {
   await safeQuery('OutstandingCommission.commissionAmount default',  `ALTER TABLE "OutstandingCommission" ALTER COLUMN "commissionAmount"  SET DEFAULT 0`);
   await safeQuery('OutstandingCommission.amount default',            `ALTER TABLE "OutstandingCommission" ALTER COLUMN "amount"            SET DEFAULT 0`);
   await safeQuery('OutstandingCommission.reminderCount default',     `ALTER TABLE "OutstandingCommission" ALTER COLUMN "reminderCount"     SET DEFAULT 0`);
+  await safeQuery('OutstandingCommission.dueDate default',           `ALTER TABLE "OutstandingCommission" ALTER COLUMN "dueDate"           SET DEFAULT NOW()`);
+  await safeQuery('OutstandingCommission.dueAt default',             `ALTER TABLE "OutstandingCommission" ALTER COLUMN "dueAt"             SET DEFAULT NOW()`);
 
   for (const [label, sql] of commissionCols) {
     await safeQuery(label, sql);

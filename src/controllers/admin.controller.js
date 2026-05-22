@@ -1699,6 +1699,197 @@ async function suspendForCommission(req, res) {
   }
 }
 
+// ─── Admin Analytics (single combined endpoint) ──────────────────────────────
+async function getAnalytics(req, res) {
+  try {
+    const { period = '30' } = req.query;
+    const days = parseInt(period) || 30;
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const [
+      totalBookings,
+      completedBookings,
+      totalUsersRaw,
+      totalProviders,
+      verifiedProviders,
+      totalReviews,
+      avgRatingRaw,
+      activeToday,
+    ] = await Promise.all([
+      prisma.booking.count(),
+      prisma.booking.count({ where: { status: 'COMPLETED' } }),
+      prisma.user.groupBy({ by: ['role'], _count: true }),
+      prisma.provider.count(),
+      prisma.provider.count({ where: { isVerified: true } }),
+      prisma.review.count(),
+      prisma.review.aggregate({ _avg: { rating: true } }),
+      prisma.booking.count({ where: { status: { in: ['PENDING', 'ACCEPTED', 'EN_ROUTE', 'IN_PROGRESS'] } } }),
+    ]);
+
+    const customerCount = totalUsersRaw.find(u => u.role === 'CUSTOMER')?._count || 0;
+
+    const [revenueAllTime, revenueThisMonth, commissionCollected, subscriptionRevenue, bookingsThisMonth, newCustomersThisMonth] = await Promise.all([
+      prisma.booking.aggregate({ where: { status: 'COMPLETED' }, _sum: { totalAmount: true } }),
+      prisma.booking.aggregate({ where: { status: 'COMPLETED', updatedAt: { gte: monthStart } }, _sum: { totalAmount: true } }),
+      prisma.outstandingCommission.aggregate({ where: { status: 'PAID' }, _sum: { commissionAmount: true } }).catch(() => ({ _sum: { commissionAmount: 0 } })),
+      prisma.subscriptionPayment.aggregate({ where: { status: 'PAID' }, _sum: { amount: true } }).catch(() => ({ _sum: { amount: 0 } })),
+      prisma.booking.count({ where: { createdAt: { gte: monthStart } } }),
+      prisma.user.count({ where: { role: 'CUSTOMER', createdAt: { gte: monthStart } } }),
+    ]);
+
+    const completionRate = totalBookings > 0 ? Math.round((completedBookings / totalBookings) * 100) : 0;
+
+    // Daily chart data
+    const dailyBookings = await prisma.$queryRawUnsafe(`
+      SELECT
+        DATE("createdAt") as date,
+        COUNT(*) as bookings,
+        COALESCE(SUM("totalAmount"), 0) as revenue
+      FROM "Booking"
+      WHERE "createdAt" >= NOW() - INTERVAL '${days} days'
+      GROUP BY DATE("createdAt")
+      ORDER BY date ASC
+    `);
+
+    // Category breakdown
+    const categoryBookings = await prisma.$queryRawUnsafe(`
+      SELECT
+        p.category,
+        COUNT(b.id) as bookings,
+        COALESCE(SUM(b."totalAmount"), 0) as revenue
+      FROM "Provider" p
+      LEFT JOIN "Booking" b ON b."providerId" = p.id
+      GROUP BY p.category
+      ORDER BY bookings DESC
+    `);
+
+    // Status breakdown
+    const statusBreakdown = await prisma.booking.groupBy({ by: ['status'], _count: true });
+
+    // Top providers
+    const topProviders = await prisma.provider.findMany({
+      take: 10,
+      include: {
+        user: { select: { name: true, profilePhoto: true } },
+        _count: { select: { bookings: true, reviews: true } },
+        bookings: { where: { status: 'COMPLETED' }, select: { totalAmount: true } },
+        reviews: { select: { rating: true } },
+      },
+      orderBy: { bookings: { _count: 'desc' } },
+    });
+
+    const topProvidersFormatted = topProviders.map(p => ({
+      id: p.id,
+      name: p.businessName,
+      category: p.category,
+      location: p.location,
+      profilePhoto: p.profilePhoto || p.user?.profilePhoto,
+      totalBookings: p._count.bookings,
+      totalRevenue: p.bookings.reduce((sum, b) => sum + (b.totalAmount || 0), 0),
+      averageRating: p.reviews.length > 0
+        ? parseFloat((p.reviews.reduce((sum, r) => sum + r.rating, 0) / p.reviews.length).toFixed(1))
+        : 0,
+      totalReviews: p._count.reviews,
+    }));
+
+    // Growth data (6 months)
+    const growthData = await prisma.$queryRawUnsafe(`
+      SELECT
+        TO_CHAR(DATE_TRUNC('month', "createdAt"), 'Mon') as month,
+        DATE_TRUNC('month', "createdAt") as month_date,
+        COUNT(CASE WHEN role = 'CUSTOMER' THEN 1 END) as customers,
+        COUNT(CASE WHEN role = 'PROVIDER' THEN 1 END) as providers
+      FROM "User"
+      WHERE "createdAt" >= NOW() - INTERVAL '6 months'
+      GROUP BY DATE_TRUNC('month', "createdAt"), TO_CHAR(DATE_TRUNC('month', "createdAt"), 'Mon')
+      ORDER BY month_date ASC
+    `);
+
+    const bookingGrowth = await prisma.$queryRawUnsafe(`
+      SELECT
+        TO_CHAR(DATE_TRUNC('month', "createdAt"), 'Mon') as month,
+        COUNT(*) as bookings
+      FROM "Booking"
+      WHERE "createdAt" >= NOW() - INTERVAL '6 months'
+      GROUP BY DATE_TRUNC('month', "createdAt")
+      ORDER BY DATE_TRUNC('month', "createdAt") ASC
+    `);
+
+    // Recent activity
+    const [recentBookings, newUsers, recentPayments] = await Promise.all([
+      prisma.booking.findMany({
+        take: 5, orderBy: { createdAt: 'desc' },
+        include: {
+          customer: { select: { name: true } },
+          provider: { select: { businessName: true, category: true } },
+        },
+      }),
+      prisma.user.findMany({
+        take: 5, orderBy: { createdAt: 'desc' },
+        select: { id: true, name: true, role: true, createdAt: true, location: true },
+      }),
+      prisma.booking.findMany({
+        take: 5, where: { status: 'COMPLETED' }, orderBy: { updatedAt: 'desc' },
+        include: {
+          customer: { select: { name: true } },
+          provider: { select: { businessName: true } },
+        },
+      }),
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        totalRevenue: revenueAllTime._sum.totalAmount || 0,
+        revenueThisMonth: revenueThisMonth._sum.totalAmount || 0,
+        totalBookings,
+        bookingsThisMonth,
+        completedBookings,
+        completionRate,
+        totalCustomers: customerCount,
+        newCustomersThisMonth,
+        totalProviders,
+        verifiedProviders,
+        activeToday,
+        averageRating: parseFloat((avgRatingRaw._avg.rating || 0).toFixed(1)),
+        totalReviews,
+        commissionRevenue: commissionCollected._sum.commissionAmount || 0,
+        subscriptionRevenue: subscriptionRevenue._sum.amount || 0,
+        dailyBookings: dailyBookings.map(d => ({
+          date: new Date(d.date).toLocaleDateString('en-KE', { month: 'short', day: 'numeric' }),
+          bookings: Number(d.bookings),
+          revenue: parseFloat(d.revenue),
+        })),
+        categoryBreakdown: categoryBookings.map(c => ({
+          category: c.category,
+          bookings: Number(c.bookings),
+          revenue: parseFloat(c.revenue),
+        })),
+        statusBreakdown: statusBreakdown.map(s => ({ status: s.status, count: s._count })),
+        growthData: growthData.map(g => ({
+          month: g.month,
+          customers: Number(g.customers),
+          providers: Number(g.providers),
+          bookings: Number(bookingGrowth.find(b => b.month === g.month)?.bookings || 0),
+        })),
+        topProviders: topProvidersFormatted,
+        recentBookings,
+        newUsers,
+        recentPayments: recentPayments.map(b => ({
+          id: b.id,
+          amount: b.totalAmount,
+          customer: b.customer,
+          provider: b.provider,
+        })),
+      },
+    });
+  } catch (err) {
+    console.error('getAnalytics error:', err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
 module.exports = {
   getStats,
   getPendingProviders,
@@ -1745,4 +1936,5 @@ module.exports = {
   rejectCommission,
   waiveCommission,
   suspendForCommission,
+  getAnalytics,
 };

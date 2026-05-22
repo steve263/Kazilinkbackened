@@ -11,6 +11,7 @@ const videoCtrl = require('../controllers/video.controller');
 const adminOnly = [auth, requireRole('ADMIN')];
 
 router.get('/stats',                          ...adminOnly, ctrl.getStats);
+router.get('/analytics',                      ...adminOnly, ctrl.getAnalytics);
 router.get('/search',                         ...adminOnly, ctrl.adminSearch);
 router.get('/badges',                         ...adminOnly, ctrl.adminBadges);
 router.get('/providers/pending',              ...adminOnly, ctrl.getPendingProviders);

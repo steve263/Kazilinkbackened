@@ -103,6 +103,40 @@ app.put('/api/reviews/:id/helpful',                  _auth, _cc.markHelpful);
 app.put('/api/reviews/:id',                          _auth, _role('CUSTOMER'), _cc.updateReview);
 app.delete('/api/reviews/:id',                       _auth, _role('CUSTOMER'), _cc.deleteReview);
 
+// ─── Public settings (no auth) ────────────────────────────────────────────────
+const PUBLIC_SETTINGS_DEFAULTS = {
+  trialDays: 14,
+  starterPrice: 800,
+  growthPrice: 1200,
+  premiumPrice: 1500,
+  currency: 'KSh',
+  supportPhone: '0795542312',
+  whatsappNumber: '0795542312',
+};
+app.get('/api/settings/public', async (req, res) => {
+  try {
+    const result = await _prisma.$queryRawUnsafe(`SELECT settings FROM "AppSettings" LIMIT 1`);
+    if (result && result.length > 0 && result[0].settings) {
+      const all = JSON.parse(result[0].settings);
+      return res.json({
+        success: true,
+        data: {
+          trialDays:     all.trialDays     ?? PUBLIC_SETTINGS_DEFAULTS.trialDays,
+          starterPrice:  all.starterPrice  ?? PUBLIC_SETTINGS_DEFAULTS.starterPrice,
+          growthPrice:   all.growthPrice   ?? PUBLIC_SETTINGS_DEFAULTS.growthPrice,
+          premiumPrice:  all.premiumPrice  ?? PUBLIC_SETTINGS_DEFAULTS.premiumPrice,
+          currency:      all.currency      ?? PUBLIC_SETTINGS_DEFAULTS.currency,
+          supportPhone:  all.supportPhone  ?? PUBLIC_SETTINGS_DEFAULTS.supportPhone,
+          whatsappNumber: all.whatsappNumber ?? PUBLIC_SETTINGS_DEFAULTS.whatsappNumber,
+        },
+      });
+    }
+    res.json({ success: true, data: PUBLIC_SETTINGS_DEFAULTS });
+  } catch {
+    res.json({ success: true, data: PUBLIC_SETTINGS_DEFAULTS });
+  }
+});
+
 // ─── 404 handler ───────────────────────────────────────────────────────────────
 app.use((req, res) => {
   res.status(404).json({ success: false, message: `Route ${req.method} ${req.path} not found` });

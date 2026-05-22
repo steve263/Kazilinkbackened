@@ -3,6 +3,7 @@ const notificationSvc = require('../services/notification.service');
 const trustSvc = require('../services/trust.service');
 const socketSvc = require('../services/socket.service');
 const mpesaSvc = require('../services/mpesa.service');
+const smsSvc = require('../services/sms.service');
 
 const BOOKING_INCLUDE = {
   customer: { select: { id: true, name: true, phone: true, location: true, deviceToken: true } },

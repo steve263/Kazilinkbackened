@@ -1497,6 +1497,208 @@ async function refundToCustomer(req, res) {
   }
 }
 
+// ── ADMIN COMMISSION MANAGEMENT ───────────────────────────────────────────────
+
+async function getAllCommissions(req, res) {
+  try {
+    const { status } = req.query;
+    console.log('Getting commissions, status filter:', status);
+
+    const where = {};
+    if (status && status !== 'ALL') where.status = status;
+
+    const commissions = await prisma.outstandingCommission.findMany({
+      where,
+      include: {
+        provider: {
+          include: {
+            user: { select: { id: true, name: true, phone: true, profilePhoto: true, isSuspended: true } },
+          },
+        },
+        booking: {
+          include: {
+            customer: { select: { name: true, phone: true } },
+            service:  { select: { name: true } },
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    console.log(`Found ${commissions.length} commissions`);
+
+    const [pending, pendingVerification, paid, overdue] = await Promise.all([
+      prisma.outstandingCommission.count({ where: { status: 'PENDING' } }),
+      prisma.outstandingCommission.count({ where: { status: 'PENDING_VERIFICATION' } }),
+      prisma.outstandingCommission.count({ where: { status: 'PAID' } }),
+      prisma.outstandingCommission.count({ where: { status: 'OVERDUE' } }),
+    ]);
+
+    const [totalPending, totalCollected] = await Promise.all([
+      prisma.outstandingCommission.aggregate({
+        where: { status: { in: ['PENDING', 'PENDING_VERIFICATION', 'OVERDUE'] } },
+        _sum: { commissionAmount: true },
+      }),
+      prisma.outstandingCommission.aggregate({
+        where: { status: 'PAID' },
+        _sum: { commissionAmount: true },
+      }),
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        commissions,
+        stats: {
+          pending,
+          pendingVerification,
+          paid,
+          overdue,
+          totalPendingAmount:   totalPending._sum.commissionAmount   || 0,
+          totalCollectedAmount: totalCollected._sum.commissionAmount || 0,
+        },
+      },
+    });
+  } catch (err) {
+    console.error('getAllCommissions error:', err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+async function confirmCommission(req, res) {
+  try {
+    const commission = await prisma.outstandingCommission.update({
+      where: { id: req.params.id },
+      data: { status: 'PAID', paidAt: new Date() },
+      include: {
+        provider: { include: { user: true } },
+        booking:  { include: { service: true } },
+      },
+    });
+
+    // Unsuspend provider if they were suspended
+    await prisma.user.update({
+      where: { id: commission.provider.userId },
+      data: { isSuspended: false },
+    }).catch(() => {});
+
+    notificationSvc.createNotification({
+      userId: commission.provider.userId,
+      type: 'SYSTEM',
+      title: '✅ Commission Confirmed!',
+      body: `Your commission of KSh ${commission.commissionAmount} for ${commission.booking?.service?.name || 'Service'} has been confirmed. Your account is fully active!`,
+    }).catch(console.error);
+
+    smsSvc.sendSMS(
+      commission.provider.user.phone,
+      `KaziShow: ✅ Commission of KSh ${commission.commissionAmount} confirmed! Your account is fully active. Keep getting bookings on kazishow.co.ke`
+    ).catch(console.error);
+
+    res.json({ success: true, data: { message: 'Commission confirmed. Fundi notified.' } });
+  } catch (err) {
+    console.error('confirmCommission error:', err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+async function rejectCommission(req, res) {
+  try {
+    const { reason } = req.body;
+
+    const commission = await prisma.outstandingCommission.update({
+      where: { id: req.params.id },
+      data: { status: 'PENDING', mpesaRef: null },
+      include: { provider: { include: { user: true } } },
+    });
+
+    notificationSvc.createNotification({
+      userId: commission.provider.userId,
+      type: 'SYSTEM',
+      title: '❌ Commission Code Rejected',
+      body: `Your M-Pesa code was not verified. ${reason || 'Please pay again and submit the correct M-Pesa SMS message.'}`,
+    }).catch(console.error);
+
+    smsSvc.sendSMS(
+      commission.provider.user.phone,
+      `KaziShow: ❌ Commission payment rejected. ${reason || 'Please pay KSh ' + commission.commissionAmount + ' to Paybill 247247 Account 0795542312 and submit the M-Pesa SMS again.'}`
+    ).catch(console.error);
+
+    res.json({ success: true, data: { message: 'Rejected. Fundi notified to pay again.' } });
+  } catch (err) {
+    console.error('rejectCommission error:', err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+async function waiveCommission(req, res) {
+  try {
+    const commission = await prisma.outstandingCommission.update({
+      where: { id: req.params.id },
+      data: { status: 'WAIVED', paidAt: new Date() },
+      include: { provider: { include: { user: true } } },
+    });
+
+    await prisma.user.update({
+      where: { id: commission.provider.userId },
+      data: { isSuspended: false },
+    }).catch(() => {});
+
+    notificationSvc.createNotification({
+      userId: commission.provider.userId,
+      type: 'SYSTEM',
+      title: '🎁 Commission Waived!',
+      body: `Your commission of KSh ${commission.commissionAmount} has been waived by KaziShow admin. Your account is fully active!`,
+    }).catch(console.error);
+
+    smsSvc.sendSMS(
+      commission.provider.user.phone,
+      `KaziShow: 🎁 Your commission of KSh ${commission.commissionAmount} has been waived! Account fully active. Keep getting bookings!`
+    ).catch(console.error);
+
+    res.json({ success: true, data: { message: 'Commission waived. Fundi notified.' } });
+  } catch (err) {
+    console.error('waiveCommission error:', err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+async function suspendForCommission(req, res) {
+  try {
+    const commission = await prisma.outstandingCommission.findUnique({
+      where: { id: req.params.id },
+      include: { provider: { include: { user: true } } },
+    });
+    if (!commission) return res.status(404).json({ success: false, message: 'Not found' });
+
+    await prisma.user.update({
+      where: { id: commission.provider.userId },
+      data: { isSuspended: true },
+    });
+
+    await prisma.outstandingCommission.update({
+      where: { id: req.params.id },
+      data: { status: 'OVERDUE' },
+    });
+
+    notificationSvc.createNotification({
+      userId: commission.provider.userId,
+      type: 'SYSTEM',
+      title: '🚨 Account Suspended!',
+      body: `Your account has been suspended due to unpaid commission of KSh ${commission.commissionAmount}. Pay via Paybill 247247 Account 0795542312 and contact support on 0795542312.`,
+    }).catch(console.error);
+
+    smsSvc.sendSMS(
+      commission.provider.user.phone,
+      `KaziShow: 🚨 SUSPENDED! Unpaid commission of KSh ${commission.commissionAmount}. Pay via M-Pesa Paybill 247247 Account 0795542312 then WhatsApp 0795542312 to reactivate.`
+    ).catch(console.error);
+
+    res.json({ success: true, data: { message: 'Provider suspended. They have been notified.' } });
+  } catch (err) {
+    console.error('suspendForCommission error:', err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
 module.exports = {
   getStats,
   getPendingProviders,
@@ -1538,4 +1740,9 @@ module.exports = {
   getDisputeDetail,
   releaseToProvider,
   refundToCustomer,
+  getAllCommissions,
+  confirmCommission,
+  rejectCommission,
+  waiveCommission,
+  suspendForCommission,
 };

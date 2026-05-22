@@ -63,7 +63,14 @@ router.post('/broadcast',                     ...adminOnly, ctrl.broadcastAnnoun
 router.get('/auto-suspension/candidates',     ...adminOnly, ctrl.getAutoSuspensionCandidates);
 router.post('/auto-suspension/run',           ...adminOnly, ctrl.runAutoSuspension);
 
-// Commission enforcement — suspend/unsuspend provider for unpaid commission
+// Commission management (new unified admin routes)
+router.get('/commissions',                ...adminOnly, ctrl.getAllCommissions);
+router.put('/commissions/:id/confirm',    ...adminOnly, ctrl.confirmCommission);
+router.put('/commissions/:id/reject',     ...adminOnly, ctrl.rejectCommission);
+router.put('/commissions/:id/waive',      ...adminOnly, ctrl.waiveCommission);
+router.put('/commissions/:id/suspend',    ...adminOnly, ctrl.suspendForCommission);
+
+// Legacy: suspend-provider inline route (kept for backwards compat)
 router.put('/commissions/:id/suspend-provider', ...adminOnly, async (req, res) => {
   try {
     const commission = await prisma.outstandingCommission.findUnique({

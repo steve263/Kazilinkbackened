@@ -629,7 +629,7 @@ model OutstandingCommission {
   status            CommissionStatus @default(PENDING)
   mpesaRef          String?
   checkoutRequestId String?
-  dueAt             DateTime         @default(now())
+  dueAt             DateTime?
   dueDate           DateTime         @default(now())
   paidAt            DateTime?
   waivedAt          DateTime?

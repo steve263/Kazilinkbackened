@@ -105,31 +105,42 @@ app.delete('/api/reviews/:id',                       _auth, _role('CUSTOMER'), _
 
 // ─── Public settings (no auth) ────────────────────────────────────────────────
 const PUBLIC_SETTINGS_DEFAULTS = {
+  // Commission
+  commissionRate: 10,
+  cashCommissionRate: 10,
+  // Subscription
   trialDays: 14,
   starterPrice: 800,
   growthPrice: 1200,
   premiumPrice: 1500,
-  currency: 'KSh',
+  // Booking rules
+  autoCancelHours: 24,
+  autoReleaseHours: 24,
+  cancellationRefundHours: 2,
+  maxBookingsPerDay: 10,
+  // Contact info
   supportPhone: '0795542312',
+  supportPhone2: '0731421635',
+  supportEmail: 'support@kazishow.co.ke',
   whatsappNumber: '0795542312',
+  whatsappNumber2: '0731421635',
+  appName: 'KaziShow',
+  // App control
+  maintenanceMode: false,
+  newRegistrationsOpen: true,
+  // Display
+  currency: 'KSh',
 };
 app.get('/api/settings/public', async (req, res) => {
   try {
     const result = await _prisma.$queryRawUnsafe(`SELECT settings FROM "AppSettings" LIMIT 1`);
     if (result && result.length > 0 && result[0].settings) {
       const all = JSON.parse(result[0].settings);
-      return res.json({
-        success: true,
-        data: {
-          trialDays:     all.trialDays     ?? PUBLIC_SETTINGS_DEFAULTS.trialDays,
-          starterPrice:  all.starterPrice  ?? PUBLIC_SETTINGS_DEFAULTS.starterPrice,
-          growthPrice:   all.growthPrice   ?? PUBLIC_SETTINGS_DEFAULTS.growthPrice,
-          premiumPrice:  all.premiumPrice  ?? PUBLIC_SETTINGS_DEFAULTS.premiumPrice,
-          currency:      all.currency      ?? PUBLIC_SETTINGS_DEFAULTS.currency,
-          supportPhone:  all.supportPhone  ?? PUBLIC_SETTINGS_DEFAULTS.supportPhone,
-          whatsappNumber: all.whatsappNumber ?? PUBLIC_SETTINGS_DEFAULTS.whatsappNumber,
-        },
-      });
+      const merged = {};
+      for (const key of Object.keys(PUBLIC_SETTINGS_DEFAULTS)) {
+        merged[key] = all[key] !== undefined ? all[key] : PUBLIC_SETTINGS_DEFAULTS[key];
+      }
+      return res.json({ success: true, data: merged });
     }
     res.json({ success: true, data: PUBLIC_SETTINGS_DEFAULTS });
   } catch {

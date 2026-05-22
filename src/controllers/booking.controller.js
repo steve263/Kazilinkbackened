@@ -1155,8 +1155,8 @@ async function markCashPaid(req, res) {
     const bookingId = req.params.id;
     const { mpesaCode, commissionAmount: bodyCommission, totalAmount: bodyTotal } = req.body;
 
-    if (!mpesaCode || mpesaCode.trim().length < 10) {
-      return res.status(400).json({ success: false, message: 'Please paste your full Equity Bank confirmation message' });
+    if (!mpesaCode || mpesaCode.trim().length < 8) {
+      return res.status(400).json({ success: false, message: 'Please enter your M-Pesa confirmation code (e.g. QGH7YU89KL)' });
     }
 
     const booking = await prisma.booking.findUnique({
@@ -1362,8 +1362,15 @@ async function commissionCallback(req, res) {
 // ── GET OUTSTANDING COMMISSION (provider checks own) ──────────────────────────
 async function getOutstandingCommission(req, res) {
   try {
+    console.log(`💰 getOutstandingCommission for user: ${req.user.id}`);
+
     const provider = await prisma.provider.findUnique({ where: { userId: req.user.id } });
-    if (!provider) return res.json({ success: true, data: { commissions: [], total: 0, isBlocked: false } });
+    if (!provider) {
+      console.log('No provider found for user:', req.user.id);
+      return res.json({ success: true, data: [] });
+    }
+
+    console.log(`💰 Provider: ${provider.businessName} (${provider.id})`);
 
     const commissions = await prisma.outstandingCommission.findMany({
       where: { providerId: provider.id, status: { in: ['PENDING', 'OVERDUE', 'PENDING_VERIFICATION'] } },
@@ -1378,15 +1385,19 @@ async function getOutstandingCommission(req, res) {
       orderBy: { createdAt: 'desc' },
     });
 
-    const total = commissions.reduce((sum, c) => sum + c.amount, 0);
-    const isBlocked = commissions.some((c) => c.status === 'OVERDUE');
+    const commissionRate = parseFloat(process.env.COMMISSION_RATE || '0.10');
+    const shaped = commissions.map((c) => ({
+      ...c,
+      commissionAmount: c.amount,
+      cashAmount: commissionRate > 0 ? Math.round(c.amount / commissionRate) : c.amount * 10,
+    }));
 
-    console.log(`💰 Found ${commissions.length} pending commissions for ${provider.businessName}`);
+    console.log(`💰 Found ${shaped.length} commissions for ${provider.businessName}`);
 
-    res.json({ success: true, data: { commissions, total, isBlocked } });
+    return res.json({ success: true, data: shaped });
   } catch (err) {
-    console.error('getOutstandingCommission error:', err.message);
-    res.json({ success: true, data: { commissions: [], total: 0, isBlocked: false } });
+    console.error('❌ getOutstandingCommission error:', err.message);
+    return res.json({ success: true, data: [] });
   }
 }
 

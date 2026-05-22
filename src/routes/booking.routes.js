@@ -39,7 +39,7 @@ router.post('/admin/cancellations/:id/send-b2c', auth, requireRole('ADMIN'), sen
 router.get('/admin/commissions', auth, requireRole('ADMIN'), getAllCommissions);
 router.post('/commission-callback', commissionCallback);
 router.get('/my-commissions', auth, requireRole('PROVIDER'), getOutstandingCommission);
-router.get('/commission/outstanding', auth, requireRole('PROVIDER'), getCommissionForPayment);
+router.get('/commission/outstanding', auth, requireRole('PROVIDER'), getOutstandingCommission);
 router.post('/commission/:id/submit-code', auth, requireRole('PROVIDER'), submitCommissionCode);
 
 router.get('/:id/tracking', auth, getTracking);

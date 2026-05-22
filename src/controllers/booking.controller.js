@@ -17,7 +17,7 @@ const BOOKING_INCLUDE = {
 
 async function createBooking(req, res) {
   try {
-    const { providerId, serviceId, scheduledDate, scheduledTime, address, lat, lng, notes, totalAmount: bodyAmount } = req.body;
+    const { providerId, serviceId, serviceIds, serviceNames, scheduledDate, scheduledTime, address, lat, lng, notes, totalAmount: bodyAmount } = req.body;
 
     if (!providerId || !scheduledDate || !scheduledTime || !address) {
       return res.status(400).json({
@@ -49,10 +49,21 @@ async function createBooking(req, res) {
     }
 
     let totalAmount = bodyAmount ? parseFloat(bodyAmount) : (provider.minJobValue || 0);
-    if (!bodyAmount && serviceId) {
+
+    // Multi-service: verify total by fetching actual DB prices
+    if (Array.isArray(serviceIds) && serviceIds.length > 0) {
+      const dbServices = await prisma.service.findMany({ where: { id: { in: serviceIds } } });
+      const correctTotal = dbServices.reduce((sum, s) => sum + (s.price || 0), 0);
+      if (correctTotal > 0) totalAmount = correctTotal;
+    } else if (!bodyAmount && serviceId) {
       const service = await prisma.service.findUnique({ where: { id: serviceId } });
       if (service && service.priceType === 'FIXED') totalAmount = service.price;
     }
+
+    // Prepend selected service names to notes so provider sees them
+    const finalNotes = serviceNames
+      ? `Services: ${serviceNames}\n${notes || ''}`.trim()
+      : notes;
 
     const isFundi = provider.category === 'FUNDI';
 
@@ -71,19 +82,22 @@ async function createBooking(req, res) {
     }
     const finalPaymentMethod = isFundi ? 'CASH_OR_MPESA' : 'PAY_AT_VENUE';
 
+    // Use first serviceId for the FK, multi-service names stored in notes
+    const primaryServiceId = serviceId || (Array.isArray(serviceIds) && serviceIds[0]) || null;
+
     const booking = await prisma.$transaction(async (tx) => {
       return tx.booking.create({
         data: {
           customerId: req.user.id,
           providerId,
-          serviceId: serviceId || null,
+          serviceId: primaryServiceId,
           scheduledDate: new Date(scheduledDate),
           scheduledTime,
           address,
           lat: lat ? parseFloat(lat) : null,
           lng: lng ? parseFloat(lng) : null,
           totalAmount,
-          notes,
+          notes: finalNotes,
           paymentMethod: finalPaymentMethod,
           status: 'PENDING',
         },
@@ -93,13 +107,13 @@ async function createBooking(req, res) {
 
     console.log(`📋 New booking created: ${booking.id} — ${req.user.name} → ${provider.businessName} [PENDING — awaiting provider]`);
 
-    // Emit real-time popup to the provider
+    // Emit real-time popup to the provider (include all service names if multi-select)
     socketSvc.emitNewBookingRequest(provider.user.id, {
       bookingId: booking.id,
       customerName: req.user.name,
       customerPhone: req.user.phone || '',
       customerPhoto: req.user.profilePhoto || null,
-      service: booking.service?.name || null,
+      service: serviceNames || booking.service?.name || null,
       address: booking.address,
       scheduledDate: booking.scheduledDate,
       scheduledTime: booking.scheduledTime,

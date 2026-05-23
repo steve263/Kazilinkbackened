@@ -22,6 +22,7 @@ const {
   waiveCommission,
   confirmCommissionPayment,
   rejectCommissionPayment,
+  getCommissionStatus,
   disputeJob,
   requestRefund,
   markRefundProcessed,
@@ -41,6 +42,7 @@ router.post('/commission-callback', commissionCallback);
 router.get('/my-commissions', auth, requireRole('PROVIDER'), getOutstandingCommission);
 router.get('/commission/outstanding', auth, requireRole('PROVIDER'), getOutstandingCommission);
 router.post('/commission/:id/submit-code', auth, requireRole('PROVIDER'), submitCommissionCode);
+router.get('/commission/status/:bookingId', auth, getCommissionStatus);
 
 router.get('/:id/tracking', auth, getTracking);
 router.post('/:id/location', auth, updateProviderLocation);

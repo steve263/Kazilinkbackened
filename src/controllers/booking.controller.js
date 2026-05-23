@@ -81,6 +81,20 @@ async function createBooking(req, res) {
         },
       });
     }
+
+    // Block Fundi with a commission payment awaiting admin verification
+    if (isFundi) {
+      const pendingVerification = await prisma.outstandingCommission.findFirst({
+        where: { providerId: provider.id, status: 'PENDING_VERIFICATION' },
+      });
+      if (pendingVerification) {
+        return res.status(403).json({
+          success: false,
+          message: 'This Fundi has a pending commission payment being verified. Please try again later.',
+          code: 'COMMISSION_PENDING',
+        });
+      }
+    }
     const finalPaymentMethod = isFundi ? 'CASH_OR_MPESA' : 'PAY_AT_VENUE';
 
     // Use first serviceId for the FK, multi-service names stored in notes
@@ -1850,6 +1864,25 @@ async function submitCommissionCode(req, res) {
   }
 }
 
+async function getCommissionStatus(req, res) {
+  try {
+    const { bookingId } = req.params;
+    const commission = await prisma.outstandingCommission.findUnique({
+      where: { bookingId },
+      select: {
+        id: true,
+        status: true,
+        mpesaRef: true,
+        commissionAmount: true,
+        paidAt: true,
+      },
+    });
+    res.json({ success: true, data: commission || null });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
 module.exports = {
   createBooking,
   getBookings,
@@ -1878,4 +1911,5 @@ module.exports = {
   submitCommissionCode,
   confirmCommissionPayment,
   rejectCommissionPayment,
+  getCommissionStatus,
 };

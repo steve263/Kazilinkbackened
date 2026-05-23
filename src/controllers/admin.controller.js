@@ -1702,10 +1702,22 @@ async function suspendForCommission(req, res) {
 // ─── Admin Analytics (single combined endpoint) ──────────────────────────────
 async function getAnalytics(req, res) {
   try {
-    const { period = '30' } = req.query;
-    const days = parseInt(period) || 30;
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    let rangeStart, rangeEnd;
+    if (req.query.startDate && req.query.endDate) {
+      rangeStart = new Date(req.query.startDate + 'T00:00:00.000Z');
+      rangeEnd = new Date(req.query.endDate + 'T23:59:59.999Z');
+    } else {
+      const days = parseInt(req.query.period) || 30;
+      rangeEnd = now;
+      rangeStart = new Date(now);
+      rangeStart.setDate(rangeStart.getDate() - days);
+    }
+
+    const startISO = rangeStart.toISOString();
+    const endISO = rangeEnd.toISOString();
 
     const [
       totalBookings,
@@ -1747,7 +1759,7 @@ async function getAnalytics(req, res) {
         COUNT(*) as bookings,
         COALESCE(SUM("totalAmount"), 0) as revenue
       FROM "Booking"
-      WHERE "createdAt" >= NOW() - INTERVAL '${days} days'
+      WHERE "createdAt" >= '${startISO}' AND "createdAt" <= '${endISO}'
       GROUP BY DATE("createdAt")
       ORDER BY date ASC
     `);

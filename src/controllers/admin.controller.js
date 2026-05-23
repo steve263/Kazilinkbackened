@@ -1902,6 +1902,221 @@ async function getAnalytics(req, res) {
   }
 }
 
+// ─── Finance Data ─────────────────────────────────────────────────────────────
+async function getFinanceData(req, res) {
+  try {
+    const now = new Date();
+    const todayStart = new Date(now);
+    todayStart.setHours(0, 0, 0, 0);
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
+
+    const [
+      totalCommission, totalSubscription,
+      thisMonthCommission, thisMonthSubscription,
+      lastMonthCommission, lastMonthSubscription,
+      todayCommission, todaySubscription,
+      pendingCommission, pendingSubscription,
+      totalBookingValue, thisMonthBookingValue,
+    ] = await Promise.all([
+      prisma.outstandingCommission.aggregate({ where: { status: 'PAID' }, _sum: { commissionAmount: true } }),
+      prisma.subscriptionPayment.aggregate({ where: { status: 'PAID' }, _sum: { amount: true } }).catch(() => ({ _sum: { amount: 0 } })),
+      prisma.outstandingCommission.aggregate({ where: { status: 'PAID', paidAt: { gte: monthStart } }, _sum: { commissionAmount: true } }),
+      prisma.subscriptionPayment.aggregate({ where: { status: 'PAID', paidAt: { gte: monthStart } }, _sum: { amount: true } }).catch(() => ({ _sum: { amount: 0 } })),
+      prisma.outstandingCommission.aggregate({ where: { status: 'PAID', paidAt: { gte: lastMonthStart, lte: lastMonthEnd } }, _sum: { commissionAmount: true } }),
+      prisma.subscriptionPayment.aggregate({ where: { status: 'PAID', paidAt: { gte: lastMonthStart, lte: lastMonthEnd } }, _sum: { amount: true } }).catch(() => ({ _sum: { amount: 0 } })),
+      prisma.outstandingCommission.aggregate({ where: { status: 'PAID', paidAt: { gte: todayStart } }, _sum: { commissionAmount: true } }),
+      prisma.subscriptionPayment.aggregate({ where: { status: 'PAID', paidAt: { gte: todayStart } }, _sum: { amount: true } }).catch(() => ({ _sum: { amount: 0 } })),
+      prisma.outstandingCommission.aggregate({ where: { status: { in: ['PENDING', 'PENDING_VERIFICATION', 'OVERDUE'] } }, _sum: { commissionAmount: true } }),
+      prisma.subscriptionPayment.aggregate({ where: { status: 'PENDING_VERIFICATION' }, _sum: { amount: true } }).catch(() => ({ _sum: { amount: 0 } })),
+      prisma.booking.aggregate({ where: { status: 'COMPLETED' }, _sum: { totalAmount: true } }),
+      prisma.booking.aggregate({ where: { status: 'COMPLETED', updatedAt: { gte: monthStart } }, _sum: { totalAmount: true } }),
+    ]);
+
+    const dailyData = await prisma.$queryRawUnsafe(`
+      SELECT DATE(oc."paidAt") as date, COUNT(*) as transactions, COALESCE(SUM(oc."commissionAmount"), 0) as commission
+      FROM "OutstandingCommission" oc
+      WHERE oc.status = 'PAID' AND oc."paidAt" >= NOW() - INTERVAL '30 days'
+      GROUP BY DATE(oc."paidAt") ORDER BY date DESC
+    `);
+
+    const dailySubData = await prisma.$queryRawUnsafe(`
+      SELECT DATE(sp."paidAt") as date, COUNT(*) as transactions, COALESCE(SUM(sp.amount), 0) as subscription
+      FROM "SubscriptionPayment" sp
+      WHERE sp.status = 'PAID' AND sp."paidAt" >= NOW() - INTERVAL '30 days'
+      GROUP BY DATE(sp."paidAt") ORDER BY date DESC
+    `).catch(() => []);
+
+    const monthlyData = await prisma.$queryRawUnsafe(`
+      SELECT TO_CHAR(DATE_TRUNC('month', oc."paidAt"), 'Mon YYYY') as month,
+             DATE_TRUNC('month', oc."paidAt") as month_date,
+             COUNT(*) as transactions,
+             COALESCE(SUM(oc."commissionAmount"), 0) as commission
+      FROM "OutstandingCommission" oc
+      WHERE oc.status = 'PAID' AND oc."paidAt" >= NOW() - INTERVAL '12 months'
+      GROUP BY DATE_TRUNC('month', oc."paidAt"), TO_CHAR(DATE_TRUNC('month', oc."paidAt"), 'Mon YYYY')
+      ORDER BY month_date DESC
+    `);
+
+    const monthlySubData = await prisma.$queryRawUnsafe(`
+      SELECT TO_CHAR(DATE_TRUNC('month', sp."paidAt"), 'Mon YYYY') as month,
+             DATE_TRUNC('month', sp."paidAt") as month_date,
+             COALESCE(SUM(sp.amount), 0) as subscription
+      FROM "SubscriptionPayment" sp
+      WHERE sp.status = 'PAID' AND sp."paidAt" >= NOW() - INTERVAL '12 months'
+      GROUP BY DATE_TRUNC('month', sp."paidAt"), TO_CHAR(DATE_TRUNC('month', sp."paidAt"), 'Mon YYYY')
+      ORDER BY month_date DESC
+    `).catch(() => []);
+
+    const recentCommissions = await prisma.outstandingCommission.findMany({
+      where: { status: 'PAID' },
+      orderBy: { paidAt: 'desc' },
+      take: 20,
+      include: {
+        provider: { include: { user: { select: { name: true, phone: true } } } },
+        booking: { include: { service: { select: { name: true } }, customer: { select: { name: true } } } },
+      },
+    });
+
+    const recentSubscriptions = await prisma.subscriptionPayment.findMany({
+      where: { status: 'PAID' },
+      orderBy: { paidAt: 'desc' },
+      take: 20,
+      include: {
+        subscription: {
+          include: { provider: { include: { user: { select: { name: true, phone: true } } } } },
+        },
+      },
+    }).catch(() => []);
+
+    const topCommissionEarners = await prisma.outstandingCommission.groupBy({
+      by: ['providerId'],
+      where: { status: 'PAID' },
+      _sum: { commissionAmount: true },
+      _count: true,
+      orderBy: { _sum: { commissionAmount: 'desc' } },
+      take: 5,
+    });
+
+    const topEarners = await Promise.all(
+      topCommissionEarners.map(async (e) => {
+        const provider = await prisma.provider.findUnique({
+          where: { id: e.providerId },
+          include: { user: { select: { name: true, phone: true } } },
+        });
+        return { ...e, provider };
+      })
+    );
+
+    const thisMonthTotal = (thisMonthCommission._sum.commissionAmount || 0) + (thisMonthSubscription._sum.amount || 0);
+    const lastMonthTotal = (lastMonthCommission._sum.commissionAmount || 0) + (lastMonthSubscription._sum.amount || 0);
+    const monthlyGrowth = lastMonthTotal > 0 ? Math.round(((thisMonthTotal - lastMonthTotal) / lastMonthTotal) * 100) : 0;
+
+    res.json({
+      success: true,
+      data: {
+        summary: {
+          totalCommission: totalCommission._sum.commissionAmount || 0,
+          totalSubscription: totalSubscription._sum.amount || 0,
+          totalRevenue: (totalCommission._sum.commissionAmount || 0) + (totalSubscription._sum.amount || 0),
+          totalBookingValue: totalBookingValue._sum.totalAmount || 0,
+          thisMonthCommission: thisMonthCommission._sum.commissionAmount || 0,
+          thisMonthSubscription: thisMonthSubscription._sum.amount || 0,
+          thisMonthTotal,
+          thisMonthBookingValue: thisMonthBookingValue._sum.totalAmount || 0,
+          lastMonthCommission: lastMonthCommission._sum.commissionAmount || 0,
+          lastMonthSubscription: lastMonthSubscription._sum.amount || 0,
+          lastMonthTotal,
+          todayCommission: todayCommission._sum.commissionAmount || 0,
+          todaySubscription: todaySubscription._sum.amount || 0,
+          todayTotal: (todayCommission._sum.commissionAmount || 0) + (todaySubscription._sum.amount || 0),
+          pendingCommission: pendingCommission._sum.commissionAmount || 0,
+          pendingSubscription: pendingSubscription._sum.amount || 0,
+          pendingTotal: (pendingCommission._sum.commissionAmount || 0) + (pendingSubscription._sum.amount || 0),
+          monthlyGrowth,
+        },
+        dailyData,
+        dailySubData,
+        monthlyData,
+        monthlySubData,
+        recentCommissions,
+        recentSubscriptions,
+        topEarners,
+      },
+    });
+  } catch (err) {
+    console.error('getFinanceData error:', err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+async function exportFinanceData(req, res) {
+  try {
+    const { period = 'month' } = req.query;
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const dateFilter = period === 'month' ? { gte: monthStart } : undefined;
+
+    const commissions = await prisma.outstandingCommission.findMany({
+      where: { status: 'PAID', ...(dateFilter ? { paidAt: dateFilter } : {}) },
+      orderBy: { paidAt: 'desc' },
+      include: {
+        provider: { include: { user: { select: { name: true, phone: true } } } },
+        booking: { include: { service: { select: { name: true } }, customer: { select: { name: true } } } },
+      },
+    });
+
+    const subscriptions = await prisma.subscriptionPayment.findMany({
+      where: { status: 'PAID', ...(dateFilter ? { paidAt: dateFilter } : {}) },
+      orderBy: { paidAt: 'desc' },
+      include: {
+        subscription: {
+          include: { provider: { include: { user: { select: { name: true, phone: true } } } } },
+        },
+      },
+    }).catch(() => []);
+
+    const rows = [
+      ['Date', 'Type', 'Provider Name', 'Phone', 'Service', 'Customer', 'Job Amount (KSh)', 'KaziShow Earned (KSh)', 'M-Pesa Reference'].join(','),
+    ];
+
+    commissions.forEach(c => {
+      rows.push([
+        c.paidAt ? new Date(c.paidAt).toLocaleDateString('en-KE') : '',
+        'Commission (10%)',
+        c.provider?.businessName || '',
+        c.provider?.user?.phone || '',
+        c.booking?.service?.name || '',
+        c.booking?.customer?.name || '',
+        c.cashAmount || 0,
+        c.commissionAmount || 0,
+        `"${(c.mpesaRef || '').replace(/"/g, "'")}"`,
+      ].join(','));
+    });
+
+    subscriptions.forEach(s => {
+      rows.push([
+        s.paidAt ? new Date(s.paidAt).toLocaleDateString('en-KE') : '',
+        `Subscription (${s.subscription?.plan || ''})`,
+        s.subscription?.provider?.businessName || '',
+        s.subscription?.provider?.user?.phone || '',
+        '', '', '',
+        s.amount || 0,
+        `"${(s.mpesaRef || '').replace(/"/g, "'")}"`,
+      ].join(','));
+    });
+
+    const filename = `kazishow-finance-${period}-${now.toISOString().split('T')[0]}.csv`;
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(rows.join('\n'));
+  } catch (err) {
+    console.error('exportFinanceData error:', err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
 module.exports = {
   getStats,
   getPendingProviders,
@@ -1949,4 +2164,6 @@ module.exports = {
   waiveCommission,
   suspendForCommission,
   getAnalytics,
+  getFinanceData,
+  exportFinanceData,
 };

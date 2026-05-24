@@ -28,6 +28,7 @@ router.put('/users/:id/suspend',              ...adminOnly, ctrl.suspendUser);
 router.delete('/users/:id',                   ...adminOnly, ctrl.deleteUser);
 router.get('/bookings',                       ...adminOnly, ctrl.getAllBookings);
 router.put('/bookings/:id/status',            ...adminOnly, ctrl.updateBookingStatus);
+router.put('/bookings/:id/payment-status',    ...adminOnly, ctrl.updateBookingPaymentStatus);
 router.get('/revenue',                        ...adminOnly, ctrl.getRevenue);
 
 // Testimonials approval routes

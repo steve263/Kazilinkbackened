@@ -418,6 +418,24 @@ async function updateBookingStatus(req, res) {
   }
 }
 
+async function updateBookingPaymentStatus(req, res) {
+  try {
+    const { paymentStatus } = req.body;
+    const allowed = ['PAID', 'UNPAID', 'REFUNDED'];
+    if (!allowed.includes(paymentStatus?.toUpperCase())) {
+      return res.status(400).json({ success: false, message: 'Invalid payment status' });
+    }
+    const updated = await prisma.booking.update({
+      where: { id: req.params.id },
+      data: { paymentStatus: paymentStatus.toUpperCase() },
+    });
+    console.log(`💳 Admin updated payment status for booking ${req.params.id} → ${paymentStatus}`);
+    res.json({ success: true, data: updated });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
 // ─── Revenue & Analytics ──────────────────────────────────────────────────────
 
 async function getRevenue(req, res) {
@@ -2131,6 +2149,7 @@ module.exports = {
   toggleVerified,
   getAllBookings,
   updateBookingStatus,
+  updateBookingPaymentStatus,
   getRevenue,
   getPendingCertificates,
   approveCertificate,

@@ -5,11 +5,9 @@ const SYSTEM_PROMPT = `You are Kazi AI, the friendly customer support assistant 
 ━━━━━━━━━━━━━━━━━━━━━━━━
 CONTACT & SUPPORT
 ━━━━━━━━━━━━━━━━━━━━━━━━
-- WhatsApp General Help: +254795542312
-- WhatsApp Payments & Disputes: +254731421635
+- WhatsApp Support: +254795542312
 - Email: support@kazishow.co.ke
 - Support hours: 8AM–8PM EAT, Monday–Sunday
-- Always direct urgent payment issues to WhatsApp +254731421635
 
 ━━━━━━━━━━━━━━━━━━━━━━━━
 WHAT IS KAZISHOW?
@@ -33,7 +31,7 @@ PAYMENT — HOW CUSTOMERS PAY
 - Customers pay providers DIRECTLY — cash or M-Pesa — after the job is done
 - KaziShow does NOT hold or escrow customer payments
 - There is no online payment required at booking time
-- If you have a payment dispute, contact WhatsApp: +254731421635
+- If you have a payment dispute, contact WhatsApp: +254795542312
 
 ━━━━━━━━━━━━━━━━━━━━━━━━
 HOW FUNDIS (MOBILE PROVIDERS) WORK
@@ -104,7 +102,7 @@ Important subscription notes:
 - Subscriptions are monthly — renew before expiry to keep receiving bookings
 - If your subscription expires, new bookings are paused until you renew
 - Fundis do NOT need subscriptions — they pay per-job commission instead
-- For subscription issues contact WhatsApp: +254731421635
+- For subscription issues contact WhatsApp: +254795542312
 
 ━━━━━━━━━━━━━━━━━━━━━━━━
 HOW TO REGISTER AS A PROVIDER
@@ -125,14 +123,14 @@ TRUST & SAFETY
 - Customers can rate and review providers after every job
 - Providers with poor ratings or complaints can be suspended
 - To report a bad provider: go to their profile and tap "Report"
-- For fraud or serious complaints: WhatsApp +254731421635 immediately
+- For fraud or serious complaints: WhatsApp +254795542312 immediately
 
 ━━━━━━━━━━━━━━━━━━━━━━━━
 CANCELLATIONS & REFUNDS
 ━━━━━━━━━━━━━━━━━━━━━━━━
 - Customers can cancel a booking before the provider arrives
 - Since payment is made directly to providers (cash/M-Pesa), refunds are handled case-by-case
-- For refund disputes contact WhatsApp: +254731421635
+- For refund disputes contact WhatsApp: +254795542312
 
 ━━━━━━━━━━━━━━━━━━━━━━━━
 TONE & RULES
@@ -194,7 +192,7 @@ async function aiChat(req, res) {
     console.error('❌ AI chat error:', err.response?.data || err.message);
     res.status(500).json({
       success: false,
-      message: 'AI support unavailable. Please contact us on WhatsApp: +254795542312 or +254731421635',
+      message: 'AI support unavailable. Please contact us on WhatsApp: +254795542312 or +254795542312',
     });
   }
 }

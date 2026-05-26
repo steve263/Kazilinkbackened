@@ -263,7 +263,7 @@ async function suspendUser(req, res) {
     // SMS (most reliable — always reaches them)
     smsSvc.sendSMS(
       user.phone,
-      `KaziShow: Your account has been suspended. Reason: ${reason}. To appeal, open the KaziShow app and tap "Appeal Suspension". For help contact: 0795542312 or 0731421635.`
+      `KaziShow: Your account has been suspended. Reason: ${reason}. To appeal, open the KaziShow app and tap "Appeal Suspension". For help contact: 0795542312.`
     ).catch(console.error);
 
     console.log(`✅ Suspension notifications sent to ${user.name}`);

@@ -20,7 +20,7 @@ async function auth(req, res, next) {
       return res.status(403).json({
         success: false,
         code: 'ACCOUNT_DEACTIVATED',
-        message: 'Your account has been deactivated. Contact support@kazishow.co.ke to reactivate.',
+        message: 'Your account has been deactivated. Contact kazishow0@gmail.com to reactivate.',
       });
     }
 
@@ -28,7 +28,7 @@ async function auth(req, res, next) {
       return res.status(403).json({
         success: false,
         code: 'ACCOUNT_SUSPENDED',
-        message: 'Your account has been suspended. Contact support@kazishow.co.ke to appeal.',
+        message: 'Your account has been suspended. Contact kazishow0@gmail.com to appeal.',
       });
     }
 

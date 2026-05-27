@@ -530,7 +530,7 @@ async function rejectAppeal(req, res) {
 
     smsSvc.sendSMS(
       appeal.user.phone,
-      `KaziShow: Your suspension appeal was not approved. Reason: ${reason}. Contact support: 0795542312 or support@kazishow.co.ke`
+      `KaziShow: Your suspension appeal was not approved. Reason: ${reason}. Contact support: 0795542312 or kazishow0@gmail.com`
     ).catch(console.error);
 
     console.log(`❌ Appeal rejected for ${appeal.user.name} — ${reason}`);

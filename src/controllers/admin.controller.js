@@ -1117,7 +1117,7 @@ const DEFAULT_SETTINGS = {
   newRegistrationsOpen: true,
   appName: 'KaziShow',
   supportPhone: '0795542312',
-  supportEmail: 'support@kazishow.co.ke',
+  supportEmail: 'kazishow0@gmail.com',
   whatsappNumber: '0795542312',
   smsEnabled: true,
   smsWelcomeMessage: "Welcome to KaziShow! Kenya's #1 service platform. Find and book trusted providers near you.",

@@ -89,13 +89,13 @@ async function suspendAccount(userId, reason) {
     userId,
     type: 'SYSTEM',
     title: '🚫 Account Suspended',
-    body: `Your account has been suspended. Reason: ${reason}. Contact support@kazishow.co.ke to appeal.`,
+    body: `Your account has been suspended. Reason: ${reason}. Contact kazishow0@gmail.com to appeal.`,
   }).catch(console.error);
 
   if (user?.phone) {
     smsSvc.sendSMS(
       user.phone,
-      `KaziShow: Your account has been suspended. Reason: ${reason}. Contact support@kazishow.co.ke to appeal.`
+      `KaziShow: Your account has been suspended. Reason: ${reason}. Contact kazishow0@gmail.com to appeal.`
     ).catch(console.error);
   }
 

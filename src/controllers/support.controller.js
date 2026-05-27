@@ -6,7 +6,7 @@ const SYSTEM_PROMPT = `You are Kazi AI, the friendly customer support assistant 
 CONTACT & SUPPORT
 ━━━━━━━━━━━━━━━━━━━━━━━━
 - WhatsApp Support: +254795542312
-- Email: support@kazishow.co.ke
+- Email: kazishow0@gmail.com
 - Support hours: 8AM–8PM EAT, Monday–Sunday
 
 ━━━━━━━━━━━━━━━━━━━━━━━━

@@ -120,7 +120,7 @@ const PUBLIC_SETTINGS_DEFAULTS = {
   maxBookingsPerDay: 10,
   // Contact info
   supportPhone: '0795542312',
-  supportEmail: 'support@kazishow.co.ke',
+  supportEmail: 'kazishow0@gmail.com',
   whatsappNumber: '0795542312',
   appName: 'KaziShow',
   // App control

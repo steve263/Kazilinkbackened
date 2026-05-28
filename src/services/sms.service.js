@@ -1,10 +1,31 @@
 const at = require('../config/africastalking');
 
+function formatPhone(phone) {
+  let p = String(phone).replace(/\s+/g, '');
+  if (p.startsWith('0')) return '+254' + p.slice(1);
+  if (p.startsWith('254') && !p.startsWith('+')) return '+' + p;
+  return p;
+}
+
+async function sendOTP(phone, otp) {
+  const formattedPhone = formatPhone(phone);
+  const message = `Your KaziShow verification code is: ${otp}. Valid for 10 minutes. Do not share this code with anyone.`;
+
+  const result = await at.SMS.send({
+    to: [formattedPhone],
+    message,
+    from: process.env.AT_SENDER_ID || 'KaziShow',
+  });
+
+  console.log('✅ OTP SMS sent to', formattedPhone);
+  return { success: true, result };
+}
+
 async function sendSMS(to, message) {
-  const sms = at.SMS;
+  const formattedPhone = formatPhone(to);
   try {
-    const result = await sms.send({
-      to: Array.isArray(to) ? to : [to],
+    const result = await at.SMS.send({
+      to: Array.isArray(formattedPhone) ? formattedPhone : [formattedPhone],
       message,
       from: process.env.AT_SENDER_ID || 'KaziShow',
     });
@@ -71,6 +92,7 @@ function tplOrderCompletedCustomer(businessName) {
 }
 
 module.exports = {
+  sendOTP,
   sendSMS,
   tplNewBookingProvider,
   tplBookingAcceptedCustomer,

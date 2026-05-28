@@ -28,9 +28,9 @@ async function forgotPassword(req, res) {
     }
 
     const otp = generateOTP();
-    otpStore.set(normalPhone, { otp, expiresAt: new Date(Date.now() + 5 * 60 * 1000), verified: false });
+    otpStore.set(normalPhone, { otp, expiresAt: new Date(Date.now() + 10 * 60 * 1000), verified: false });
 
-    await smsSvc.sendSMS(normalPhone, `KaziShow: Your password reset code is ${otp}. Expires in 5 minutes. Do not share this code.`);
+    await smsSvc.sendOTP(normalPhone, otp);
 
     console.log(`🔑 Password reset OTP sent to ${normalPhone}`);
     res.json({ success: true, data: { message: 'OTP sent to your phone number' } });

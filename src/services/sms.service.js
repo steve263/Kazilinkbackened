@@ -14,7 +14,6 @@ async function sendOTP(phone, otp) {
   const result = await at.SMS.send({
     to: [formattedPhone],
     message,
-    from: process.env.AT_SENDER_ID || 'KaziShow',
   });
 
   console.log('✅ OTP SMS sent to', formattedPhone);
@@ -27,7 +26,6 @@ async function sendSMS(to, message) {
     const result = await at.SMS.send({
       to: Array.isArray(formattedPhone) ? formattedPhone : [formattedPhone],
       message,
-      from: process.env.AT_SENDER_ID || 'KaziShow',
     });
     console.log('📱 SMS sent:', JSON.stringify(result.SMSMessageData?.Recipients));
     return result;

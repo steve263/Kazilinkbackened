@@ -249,6 +249,14 @@ async function deleteUser(req, res) {
       await prisma.payment.deleteMany({ where: { bookingId: { in: allBookingIds } } }).catch(() => {});
       await prisma.review.deleteMany({ where: { bookingId: { in: allBookingIds } } }).catch(() => {});
       await prisma.notification.deleteMany({ where: { bookingId: { in: allBookingIds } } }).catch(() => {});
+      await prisma.outstandingCommission.deleteMany({ where: { bookingId: { in: allBookingIds } } }).catch(() => {});
+    }
+
+    // Delete commissions by provider too
+    if (provider) {
+      await prisma.outstandingCommission.deleteMany({ where: { providerId: provider.id } }).catch(() => {});
+      await prisma.subscription.deleteMany({ where: { providerId: provider.id } }).catch(() => {});
+      await prisma.subscriptionPayment.deleteMany({ where: { subscription: { providerId: provider.id } } }).catch(() => {});
     }
 
     // Step 2: Delete bookings
@@ -293,6 +301,10 @@ async function deleteUser(req, res) {
     await prisma.withdrawal.deleteMany({ where: { userId } }).catch(() => {});
 
     // Step 5: Delete the user
+    const userExists = await prisma.user.findUnique({ where: { id: userId } }).catch(() => null);
+    if (!userExists) {
+      return res.json({ success: true, data: { message: 'User already deleted or not found' } });
+    }
     await prisma.user.delete({ where: { id: userId } });
 
     console.log(`✅ User ${userId} deleted successfully`);

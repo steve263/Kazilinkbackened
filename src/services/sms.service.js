@@ -23,7 +23,9 @@ function getATClient() {
 }
 
 function formatPhone(phone) {
-  let p = String(phone).trim().replace(/\s/g, '');
+  if (!phone) return null;
+  let p = phone.toString().trim().replace(/\s/g, '');
+  if (!p) return null;
   if (p.startsWith('0')) return '+254' + p.slice(1);
   if (p.startsWith('254') && !p.startsWith('+')) return '+' + p;
   if (!p.startsWith('+')) return '+254' + p;
@@ -60,19 +62,27 @@ async function sendOTP(phone, otp) {
 }
 
 async function sendSMS(phone, message) {
-  console.log('📱 sendSMS called for:', phone);
-  const formattedPhone = formatPhone(phone);
-  console.log('📞 Formatted phone:', formattedPhone);
-
   try {
+    const formattedPhone = formatPhone(phone);
+    if (!formattedPhone) {
+      console.error('❌ sendSMS skipped — invalid phone:', phone);
+      return { success: false };
+    }
+
+    console.log('📱 Sending SMS to:', formattedPhone);
+    console.log('📝 Message:', message);
+
     const client = getATClient();
     const result = await client.SMS.send({
       to: [formattedPhone],
       message,
     });
 
-    console.log('✅ SMS sent:', JSON.stringify(result, null, 2));
-    return { success: true };
+    const recipient = result?.SMSMessageData?.Recipients?.[0];
+    console.log('📊 SMS Status:', recipient?.status);
+    console.log('💰 SMS Cost:', recipient?.cost);
+
+    return { success: true, result };
   } catch (err) {
     console.error('❌ sendSMS error:', err.message);
     return { success: false, error: err.message };

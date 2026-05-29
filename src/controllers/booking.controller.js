@@ -150,6 +150,14 @@ async function createBooking(req, res) {
       }).catch(console.error);
     }
 
+    // SMS to customer confirming booking submitted
+    if (req.user.phone) {
+      smsSvc.sendSMS(
+        req.user.phone,
+        `Your KaziShow booking has been submitted! We will notify you once ${provider.businessName} confirms. Track your booking at kazishow.co.ke`
+      ).catch(console.error);
+    }
+
     res.status(201).json({ success: true, data: booking });
   } catch (err) {
     console.error('❌ createBooking error:', err.message);

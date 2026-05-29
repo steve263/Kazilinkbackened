@@ -1,4 +1,13 @@
-const at = require('../config/africastalking');
+const twilio = require('twilio');
+
+function getTwilioClient() {
+  const accountSid = process.env.TWILIO_ACCOUNT_SID;
+  const authToken = process.env.TWILIO_AUTH_TOKEN;
+  if (!accountSid || !authToken) {
+    throw new Error('Twilio credentials not configured (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)');
+  }
+  return twilio(accountSid, authToken);
+}
 
 function formatPhone(phone) {
   let p = String(phone).replace(/\s+/g, '');
@@ -10,25 +19,27 @@ function formatPhone(phone) {
 async function sendOTP(phone, otp) {
   const formattedPhone = formatPhone(phone);
   const message = `Your KaziShow verification code is: ${otp}. Valid for 10 minutes. Do not share this code with anyone.`;
-
-  const result = await at.SMS.send({
-    to: [formattedPhone],
-    message,
+  const client = getTwilioClient();
+  await client.messages.create({
+    body: message,
+    from: process.env.TWILIO_PHONE_NUMBER,
+    to: formattedPhone,
   });
-
   console.log('✅ OTP SMS sent to', formattedPhone);
-  return { success: true, result };
+  return { success: true };
 }
 
 async function sendSMS(to, message) {
   const formattedPhone = formatPhone(to);
   try {
-    const result = await at.SMS.send({
-      to: Array.isArray(formattedPhone) ? formattedPhone : [formattedPhone],
-      message,
+    const client = getTwilioClient();
+    await client.messages.create({
+      body: message,
+      from: process.env.TWILIO_PHONE_NUMBER,
+      to: formattedPhone,
     });
-    console.log('📱 SMS sent:', JSON.stringify(result.SMSMessageData?.Recipients));
-    return result;
+    console.log('📱 SMS sent to', formattedPhone);
+    return { success: true };
   } catch (err) {
     console.error('❌ SMS send failed:', err.message);
     throw err;
@@ -66,7 +77,7 @@ function tplJobCompletedCustomer(providerName) {
 }
 
 function tplJobCompletedProvider(amount) {
-  return `KaziShow: Job marked complete! KSh ${amount} will be sent to your M-Pesa shortly. Thank you for your great service!`;
+  return `KaziShow: Job marked complete! KSh ${amount}. Thank you for your great service!`;
 }
 
 function tplNewOrderBusiness(customerName, serviceName, amount) {

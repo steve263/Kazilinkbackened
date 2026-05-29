@@ -357,6 +357,27 @@ async function toggleVerified(req, res) {
   }
 }
 
+async function toggleBusy(req, res) {
+  try {
+    const provider = await prisma.provider.findUnique({ where: { id: req.params.id } });
+    if (!provider) return res.status(404).json({ success: false, message: 'Provider not found' });
+
+    const updated = await prisma.provider.update({
+      where: { id: req.params.id },
+      data: {
+        isBusy: !provider.isBusy,
+        busySince: !provider.isBusy ? new Date() : null,
+      },
+    });
+
+    console.log(`🔄 Admin toggled busy for ${provider.businessName}: ${updated.isBusy ? 'Busy' : 'Available'}`);
+    res.json({ success: true, data: updated });
+  } catch (err) {
+    console.error('❌ toggleBusy error:', err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
 // ─── Bookings ─────────────────────────────────────────────────────────────────
 
 async function getAllBookings(req, res) {
@@ -2146,6 +2167,7 @@ module.exports = {
   deleteUser,
   getAllProviders,
   toggleVerified,
+  toggleBusy,
   getAllBookings,
   updateBookingStatus,
   updateBookingPaymentStatus,

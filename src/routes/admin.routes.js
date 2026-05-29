@@ -22,6 +22,7 @@ router.put('/providers/bulk-reject',          ...adminOnly, ctrl.bulkRejectProvi
 router.put('/providers/:id/approve',          ...adminOnly, ctrl.approveProvider);
 router.put('/providers/:id/reject',           ...adminOnly, ctrl.rejectProvider);
 router.put('/providers/:id/toggle-verified',  ...adminOnly, ctrl.toggleVerified);
+router.put('/providers/:id/toggle-busy',      ...adminOnly, ctrl.toggleBusy);
 router.get('/providers',                      ...adminOnly, ctrl.getAllProviders);
 router.get('/users',                          ...adminOnly, ctrl.getUsers);
 router.put('/users/:id/suspend',              ...adminOnly, ctrl.suspendUser);

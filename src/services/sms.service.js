@@ -1,48 +1,81 @@
-const twilio = require('twilio');
+const AfricasTalking = require('africastalking');
 
-function getTwilioClient() {
-  const accountSid = process.env.TWILIO_ACCOUNT_SID;
-  const authToken = process.env.TWILIO_AUTH_TOKEN;
-  if (!accountSid || !authToken) {
-    throw new Error('Twilio credentials not configured (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)');
+let atClient = null;
+
+function getATClient() {
+  if (!atClient) {
+    const apiKey = process.env.AT_API_KEY;
+    const username = process.env.AT_USERNAME;
+
+    console.log('🔧 AT Config:');
+    console.log('  Username:', username);
+    console.log('  API Key exists:', !!apiKey);
+    console.log('  API Key length:', apiKey?.length);
+    console.log('  API Key prefix:', apiKey?.slice(0, 10));
+
+    if (!apiKey || !username) {
+      throw new Error('AT_API_KEY or AT_USERNAME missing from environment');
+    }
+
+    atClient = AfricasTalking({ apiKey, username });
   }
-  return twilio(accountSid, authToken);
+  return atClient;
 }
 
 function formatPhone(phone) {
-  let p = String(phone).replace(/\s+/g, '');
+  let p = String(phone).trim().replace(/\s/g, '');
   if (p.startsWith('0')) return '+254' + p.slice(1);
   if (p.startsWith('254') && !p.startsWith('+')) return '+' + p;
+  if (!p.startsWith('+')) return '+254' + p;
   return p;
 }
 
 async function sendOTP(phone, otp) {
+  console.log('📱 sendOTP called for:', phone);
   const formattedPhone = formatPhone(phone);
-  const message = `Your KaziShow verification code is: ${otp}. Valid for 10 minutes. Do not share this code with anyone.`;
-  const client = getTwilioClient();
-  await client.messages.create({
-    body: message,
-    from: process.env.TWILIO_PHONE_NUMBER,
-    to: formattedPhone,
+  console.log('📞 Formatted phone:', formattedPhone);
+
+  const message = `Your KaziShow verification code is: ${otp}. Valid for 10 minutes. Do not share this code.`;
+
+  console.log("📨 Sending SMS via Africa's Talking...");
+
+  const client = getATClient();
+  const result = await client.SMS.send({
+    to: [formattedPhone],
+    message,
   });
-  console.log('✅ OTP SMS sent to', formattedPhone);
-  return { success: true };
+
+  console.log('✅ AT Response:', JSON.stringify(result, null, 2));
+
+  const recipient = result?.SMSMessageData?.Recipients?.[0];
+  console.log('📊 Recipient status:', recipient?.status);
+  console.log('💰 Cost:', recipient?.cost);
+  console.log('📋 Status code:', recipient?.statusCode);
+
+  if (recipient && recipient.status !== 'Success') {
+    throw new Error(`SMS delivery failed: ${recipient.status}`);
+  }
+
+  return { success: true, result };
 }
 
-async function sendSMS(to, message) {
-  const formattedPhone = formatPhone(to);
+async function sendSMS(phone, message) {
+  console.log('📱 sendSMS called for:', phone);
+  const formattedPhone = formatPhone(phone);
+  console.log('📞 Formatted phone:', formattedPhone);
+
   try {
-    const client = getTwilioClient();
-    await client.messages.create({
-      body: message,
-      from: process.env.TWILIO_PHONE_NUMBER,
-      to: formattedPhone,
+    const client = getATClient();
+    const result = await client.SMS.send({
+      to: [formattedPhone],
+      message,
     });
-    console.log('📱 SMS sent to', formattedPhone);
+
+    console.log('✅ SMS sent:', JSON.stringify(result, null, 2));
     return { success: true };
   } catch (err) {
-    console.error('❌ SMS send failed:', err.message);
-    throw err;
+    console.error('❌ sendSMS error:', err.message);
+    return { success: false, error: err.message };
   }
 }
 

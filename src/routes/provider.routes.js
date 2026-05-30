@@ -8,6 +8,8 @@ const {
 } = require('../controllers/provider.controller');
 const { requestWithdrawal, getMyWithdrawals } = require('../controllers/withdrawal.controller');
 const { auth, optionalAuth, requireRole } = require('../middleware/auth');
+const { upload } = require('../middleware/upload');
+const portfolioCtrl = require('../controllers/portfolio.controller');
 const prisma = require('../config/db');
 
 router.get('/', getProviders);
@@ -26,6 +28,11 @@ router.get('/:id/schedule', getSchedule);
 router.get('/:id/available-slots', getAvailableSlots);
 router.post('/withdrawals', auth, requireRole('PROVIDER'), requestWithdrawal);
 router.get('/withdrawals/my', auth, requireRole('PROVIDER'), getMyWithdrawals);
+// Portfolio posts — static routes must stay above /:id
+router.post('/posts',           auth, requireRole('PROVIDER'), upload.single('image'), portfolioCtrl.createPost);
+router.put('/posts/:postId',    auth, requireRole('PROVIDER'), portfolioCtrl.updatePost);
+router.delete('/posts/:postId', auth, requireRole('PROVIDER'), portfolioCtrl.deletePost);
+router.get('/:id/posts', portfolioCtrl.getPosts);
 router.get('/:id/services', optionalAuth, getAllServices);
 router.post('/:id/services', auth, requireRole('PROVIDER'), addService);
 router.get('/:id', getProvider);

@@ -2101,6 +2101,77 @@ async function getFinanceData(req, res) {
   }
 }
 
+// ─── Provider Schedule ────────────────────────────────────────────────────────
+
+async function getSchedule(req, res) {
+  try {
+    const { date } = req.query;
+    const targetDate = date ? new Date(date) : new Date();
+
+    const startOfDay = new Date(targetDate);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(targetDate);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    const bookings = await prisma.booking.findMany({
+      where: {
+        scheduledDate: { gte: startOfDay, lte: endOfDay },
+        status: { in: ['PENDING', 'ACCEPTED', 'EN_ROUTE', 'IN_PROGRESS', 'PREPARING', 'READY'] },
+      },
+      include: {
+        provider: {
+          include: {
+            user: { select: { name: true, phone: true, email: true } },
+          },
+        },
+        customer: { select: { name: true, phone: true } },
+        service:  { select: { name: true } },
+      },
+      orderBy: { scheduledDate: 'asc' },
+    });
+
+    const providerMap = {};
+    for (const booking of bookings) {
+      const pid = booking.providerId;
+      if (!providerMap[pid]) {
+        providerMap[pid] = { provider: booking.provider, bookings: [] };
+      }
+      providerMap[pid].bookings.push(booking);
+    }
+    const providers = Object.values(providerMap);
+
+    res.json({
+      success: true,
+      data: {
+        date: targetDate,
+        totalBookings: bookings.length,
+        totalProviders: providers.length,
+        providers,
+      },
+    });
+  } catch (err) {
+    console.error('getSchedule error:', err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+async function sendReminder(req, res) {
+  try {
+    const { providerPhone, message, method } = req.body;
+    if (!providerPhone || !message) {
+      return res.status(400).json({ success: false, message: 'providerPhone and message are required' });
+    }
+    if (method === 'sms') {
+      await smsSvc.sendSMS(providerPhone, message);
+    }
+    console.log(`✅ Schedule reminder sent to ${providerPhone} via ${method}`);
+    res.json({ success: true, message: 'Reminder sent' });
+  } catch (err) {
+    console.error('sendReminder error:', err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
 async function exportFinanceData(req, res) {
   try {
     const { period = 'month' } = req.query;
@@ -2218,4 +2289,6 @@ module.exports = {
   getAnalytics,
   getFinanceData,
   exportFinanceData,
+  getSchedule,
+  sendReminder,
 };

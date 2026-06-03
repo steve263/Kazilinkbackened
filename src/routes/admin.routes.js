@@ -200,6 +200,10 @@ router.put('/subscriptions/payments/:paymentId/reject', ...adminOnly, async (req
   }
 });
 
+// Provider schedule + reminders
+router.get('/schedule',        ...adminOnly, ctrl.getSchedule);
+router.post('/schedule/remind', ...adminOnly, ctrl.sendReminder);
+
 // ShowReel management (delete only — no approval flow)
 router.get('/videos',                         ...adminOnly, videoCtrl.adminGetVideos);
 router.get('/videos/reported',                ...adminOnly, (req, res, next) => { req.query.reported = 'true'; next(); }, videoCtrl.adminGetVideos);

@@ -7,6 +7,10 @@ const { upload } = require('../middleware/upload');
 // ── Public ────────────────────────────────────────────────────────────────────
 router.get('/', ctrl.getAllJobs);
 
+// ── Public worker listing ─────────────────────────────────────────────────────
+router.get('/workers/all', ctrl.getAllWorkers);
+router.get('/workers/:id', ctrl.getWorkerById);
+
 // ── Static worker routes (must be before /:id) ────────────────────────────────
 router.post('/worker/register', auth, upload.fields([{ name: 'idPhoto', maxCount: 1 }]), ctrl.registerWorker);
 router.get('/worker/profile',      auth, ctrl.getWorkerProfile);

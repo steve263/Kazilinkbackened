@@ -493,6 +493,60 @@ async function updateAvailability(req, res) {
   }
 }
 
+// ─── Get all worker profiles (public) ────────────────────────────────────────
+
+async function getAllWorkers(req, res) {
+  try {
+    const { skills, location, search } = req.query;
+    const where = {};
+
+    if (skills && skills !== 'All') {
+      where.skills = { contains: skills, mode: 'insensitive' };
+    }
+    if (location) {
+      where.location = { contains: location, mode: 'insensitive' };
+    }
+    if (search) {
+      where.OR = [
+        { skills:    { contains: search, mode: 'insensitive' } },
+        { location:  { contains: search, mode: 'insensitive' } },
+        { bio:       { contains: search, mode: 'insensitive' } },
+        { user: { name: { contains: search, mode: 'insensitive' } } },
+      ];
+    }
+
+    const workers = await prisma.workerProfile.findMany({
+      where,
+      include: {
+        user: { select: { id: true, name: true, phone: true } },
+      },
+      orderBy: [{ isAvailable: 'desc' }, { rating: 'desc' }, { totalJobs: 'desc' }],
+    });
+
+    res.json({ success: true, data: workers });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+// ─── Get worker by userId (public profile) ────────────────────────────────────
+
+async function getWorkerById(req, res) {
+  try {
+    const worker = await prisma.workerProfile.findUnique({
+      where: { userId: req.params.id },
+      include: {
+        user: { select: { id: true, name: true, phone: true } },
+      },
+    });
+
+    if (!worker) return res.status(404).json({ success: false, message: 'Worker not found' });
+    res.json({ success: true, data: worker });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
 module.exports = {
   getAllJobs, getJobById,
   registerWorker, registerEmployer,
@@ -502,4 +556,5 @@ module.exports = {
   getMyApplications, getJobApplications,
   getMyPostedJobs, getWorkerProfile,
   getEmployerProfile, updateAvailability,
+  getAllWorkers, getWorkerById,
 };

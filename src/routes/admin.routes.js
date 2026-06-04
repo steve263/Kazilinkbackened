@@ -204,6 +204,11 @@ router.put('/subscriptions/payments/:paymentId/reject', ...adminOnly, async (req
 router.get('/schedule',        ...adminOnly, ctrl.getSchedule);
 router.post('/schedule/remind', ...adminOnly, ctrl.sendReminder);
 
+// Job applications — admin verifies payment only
+router.get('/job-applications',                               ...adminOnly, ctrl.getJobApplications);
+router.put('/job-applications/:appId/verify-payment',         ...adminOnly, ctrl.verifyJobPayment);
+router.put('/job-applications/:appId/reject-payment',         ...adminOnly, ctrl.rejectJobPayment);
+
 // ShowReel management (delete only — no approval flow)
 router.get('/videos',                         ...adminOnly, videoCtrl.adminGetVideos);
 router.get('/videos/reported',                ...adminOnly, (req, res, next) => { req.query.reported = 'true'; next(); }, videoCtrl.adminGetVideos);

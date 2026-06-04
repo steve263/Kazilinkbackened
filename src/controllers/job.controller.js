@@ -220,13 +220,8 @@ async function postJob(req, res) {
 async function applyForJob(req, res) {
   try {
     const { jobId } = req.params;
-    const { workerNote } = req.body;
+    const { workerNote, applicantName, applicantPhone, applicantBio, mpesaRef, applicationFee } = req.body;
     const workerId = req.user.id;
-
-    const workerProfile = await prisma.workerProfile.findUnique({ where: { userId: workerId } });
-    if (!workerProfile) {
-      return res.status(400).json({ success: false, message: 'Please create a worker profile first at /jobs/worker/register' });
-    }
 
     const existing = await prisma.jobApplication.findFirst({ where: { jobId, workerId } });
     if (existing) {
@@ -244,12 +239,22 @@ async function applyForJob(req, res) {
       return res.status(400).json({ success: false, message: 'This job is already fully filled' });
     }
 
+    // Determine payment status: if applicant provided M-Pesa ref, mark as pending verification
+    const isPaidFlow = !!(applicantName && applicantPhone && mpesaRef);
+    const paymentStatus = isPaidFlow ? 'PENDING_VERIFICATION' : 'PENDING';
+
     const application = await prisma.jobApplication.create({
       data: {
-        id:         randomUUID(),
+        id:             randomUUID(),
         jobId,
         workerId,
-        workerNote: workerNote?.trim() || null,
+        workerNote:     workerNote?.trim() || null,
+        applicantName:  applicantName?.trim() || null,
+        applicantPhone: applicantPhone?.trim() || null,
+        applicantBio:   applicantBio?.trim() || null,
+        mpesaRef:       mpesaRef?.trim() || null,
+        applicationFee: applicationFee ? parseFloat(applicationFee) : null,
+        paymentStatus,
       },
     });
 
@@ -258,7 +263,7 @@ async function applyForJob(req, res) {
     if (employerPhone) {
       smsSvc.sendSMS(
         employerPhone,
-        `New application for "${job.title}" on KaziShow! ${req.user.name} applied. Open KaziShow to review and hire. kazishow.co.ke`
+        `New application for "${job.title}" on KaziShow! ${applicantName || req.user.name} applied. Open KaziShow to review and hire. kazishow.co.ke`
       ).catch(console.error);
     }
 

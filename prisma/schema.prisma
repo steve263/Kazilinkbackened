@@ -975,6 +975,10 @@ model JobApplication {
   workerRating   Int?
   workerReview   String?
   employerRating Int?
+  applicantName  String?
+  applicantPhone String?
+  applicantBio   String?
+  applicationFee Float?
   createdAt      DateTime  @default(now())
 
   job    Job  @relation(fields: [jobId], references: [id], onDelete: Cascade)

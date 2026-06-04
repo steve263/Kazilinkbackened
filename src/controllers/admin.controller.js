@@ -2291,4 +2291,114 @@ module.exports = {
   exportFinanceData,
   getSchedule,
   sendReminder,
+  verifyJobPayment,
+  rejectJobPayment,
+  getJobApplications,
 };
+
+// ─── Job Application Payment Verification ─────────────────────────────────────
+
+async function verifyJobPayment(req, res) {
+  try {
+    const { appId } = req.params;
+
+    const application = await prisma.jobApplication.update({
+      where: { id: appId },
+      data: { paymentStatus: 'PAYMENT_VERIFIED' },
+      include: {
+        job: {
+          include: {
+            employer: {
+              include: { employerProfile: true },
+            },
+          },
+        },
+      },
+    });
+
+    // Notify employer to review applicant
+    if (application.job?.employer?.id) {
+      notificationSvc.createNotification({
+        userId: application.job.employer.id,
+        type: 'SYSTEM',
+        title: '👤 New Applicant Ready',
+        body: `${application.applicantName} has applied for "${application.job.title}". Payment verified. Review and hire or reject them.`,
+      }).catch(console.error);
+
+      const employerPhone = application.job.employer.employerProfile?.phone;
+      if (employerPhone) {
+        smsSvc.sendSMS(
+          employerPhone,
+          `New verified applicant for your KaziShow job "${application.job.title}"! ${application.applicantName} (${application.applicantPhone}) has applied. Login to review and hire them. kazishow.co.ke`
+        ).catch(console.error);
+      }
+    }
+
+    // SMS to applicant
+    if (application.applicantPhone) {
+      smsSvc.sendSMS(
+        application.applicantPhone,
+        `Your payment for "${application.job?.title}" has been verified by KaziShow! The employer will review your application and contact you soon. kazishow.co.ke`
+      ).catch(console.error);
+    }
+
+    res.json({ success: true, message: 'Payment verified. Employer notified.' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+async function rejectJobPayment(req, res) {
+  try {
+    const { appId } = req.params;
+    const { reason } = req.body;
+
+    const application = await prisma.jobApplication.update({
+      where: { id: appId },
+      data: {
+        paymentStatus: 'REJECTED',
+        status: 'DECLINED',
+        employerNote: reason || 'Payment not found',
+      },
+    });
+
+    if (application.applicantPhone) {
+      smsSvc.sendSMS(
+        application.applicantPhone,
+        `Your application payment for this KaziShow job could not be verified. Please ensure you pay to Paybill 247247 and paste the correct M-Pesa SMS. Contact support if you need help. kazishow.co.ke`
+      ).catch(console.error);
+    }
+
+    res.json({ success: true, message: 'Payment rejected' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+async function getJobApplications(req, res) {
+  try {
+    const applications = await prisma.jobApplication.findMany({
+      include: {
+        job: {
+          select: {
+            title: true,
+            location: true,
+            pay: true,
+            employer: {
+              select: {
+                id: true,
+                name: true,
+                employerProfile: { select: { phone: true } },
+              },
+            },
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    res.json({ success: true, data: applications });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}

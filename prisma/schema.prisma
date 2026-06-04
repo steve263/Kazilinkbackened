@@ -36,6 +36,10 @@ model User {
   sentMessages         Message[]             @relation("SentMessages")
   notifications        Notification[]
   provider             Provider?
+  workerProfile        WorkerProfile?
+  employerProfile      EmployerProfile?
+  postedJobs           Job[]
+  jobApplications      JobApplication[]
   waitlistEntries      ProviderWaitlist[]
   referralsReceived    Referral[]            @relation("ReferredReferrals")
   referralsGiven       Referral[]            @relation("ReferrerReferrals")
@@ -93,6 +97,7 @@ model Provider {
   outstandingCommissions OutstandingCommission[]
   payouts                Payout[]
   portfolioVideos        PortfolioVideo[]
+  portfolioPosts         PortfolioPost[]
   posts                  Post[]
   promotions             Promotion[]
   user                   User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -902,4 +907,117 @@ enum SubscriptionStatus {
   EXPIRED
   SUSPENDED
   CANCELLED
+}
+
+// ─── Portfolio Posts (business providers) ────────────────────────────────────
+
+model PortfolioPost {
+  id          String   @id
+  providerId  String
+  title       String
+  description String?
+  price       Float?
+  imageUrl    String
+  isActive    Boolean  @default(true)
+  likesCount  Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now())
+
+  provider Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@index([providerId])
+}
+
+// ─── Jobs & Casual Work ───────────────────────────────────────────────────────
+
+model Job {
+  id             String    @id
+  employerId     String
+  title          String
+  description    String
+  category       String
+  location       String
+  address        String?
+  pay            Float
+  payType        String    @default("per day")
+  workersNeeded  Int       @default(1)
+  workersHired   Int       @default(0)
+  startDate      DateTime
+  endDate        DateTime?
+  duration       String    @default("1 day")
+  skills         String?
+  requirements   String?
+  status         String    @default("OPEN")
+  isUrgent       Boolean   @default(false)
+  viewCount      Int       @default(0)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @default(now())
+
+  employer     User             @relation(fields: [employerId], references: [id], onDelete: Cascade)
+  applications JobApplication[]
+
+  @@index([employerId])
+  @@index([status])
+}
+
+model JobApplication {
+  id             String    @id
+  jobId          String
+  workerId       String
+  status         String    @default("PENDING")
+  workerNote     String?
+  employerNote   String?
+  startedAt      DateTime?
+  completedAt    DateTime?
+  paymentStatus  String    @default("PENDING")
+  paymentAmount  Float?
+  mpesaRef       String?
+  workerRating   Int?
+  workerReview   String?
+  employerRating Int?
+  createdAt      DateTime  @default(now())
+
+  job    Job  @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  worker User @relation(fields: [workerId], references: [id], onDelete: Cascade)
+
+  @@index([jobId])
+  @@index([workerId])
+}
+
+model WorkerProfile {
+  id           String   @id
+  userId       String   @unique
+  skills       String
+  experience   String?
+  location     String
+  idNumber     String
+  idPhotoUrl   String?
+  isVerified   Boolean  @default(false)
+  isAvailable  Boolean  @default(true)
+  rating       Float    @default(0)
+  totalJobs    Int      @default(0)
+  totalEarnings Float   @default(0)
+  bio          String?
+  createdAt    DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model EmployerProfile {
+  id               String   @id
+  userId           String   @unique
+  companyName      String
+  contactPerson    String
+  phone            String
+  location         String
+  companyType      String?
+  description      String?
+  logoUrl          String?
+  isVerified       Boolean  @default(false)
+  rating           Float    @default(0)
+  totalJobsPosted  Int      @default(0)
+  alwaysPaysOnTime Boolean  @default(false)
+  createdAt        DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

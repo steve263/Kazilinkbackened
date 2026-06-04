@@ -97,6 +97,19 @@ async function applyDirectMigrations() {
        AND b."paymentMethod" = 'MPESA'`
   );
 
+  // ── JobApplication columns (new paid-application flow) ────────────────────
+
+  const jobAppCols = [
+    [`JobApplication.applicantName`,  `ALTER TABLE "JobApplication" ADD COLUMN IF NOT EXISTS "applicantName"  TEXT`],
+    [`JobApplication.applicantPhone`, `ALTER TABLE "JobApplication" ADD COLUMN IF NOT EXISTS "applicantPhone" TEXT`],
+    [`JobApplication.applicantBio`,   `ALTER TABLE "JobApplication" ADD COLUMN IF NOT EXISTS "applicantBio"   TEXT`],
+    [`JobApplication.applicationFee`, `ALTER TABLE "JobApplication" ADD COLUMN IF NOT EXISTS "applicationFee" DOUBLE PRECISION`],
+  ];
+
+  for (const [label, sql] of jobAppCols) {
+    await safeQuery(label, sql);
+  }
+
   // ── Provider columns ───────────────────────────────────────────────────────
 
   const providerCols = [

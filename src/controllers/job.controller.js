@@ -245,15 +245,15 @@ async function applyForJob(req, res) {
 
     const application = await prisma.jobApplication.create({
       data: {
-        id:             randomUUID(),
+        id:        randomUUID(),
         jobId,
         workerId,
-        workerNote:     workerNote?.trim() || null,
-        applicantName:  applicantName?.trim() || null,
-        applicantPhone: applicantPhone?.trim() || null,
-        applicantBio:   applicantBio?.trim() || null,
-        mpesaRef:       mpesaRef?.trim() || null,
-        applicationFee: applicationFee ? parseFloat(applicationFee) : null,
+        ...(workerNote     ? { workerNote:     workerNote.trim()     } : {}),
+        ...(applicantName  ? { applicantName:  applicantName.trim()  } : {}),
+        ...(applicantPhone ? { applicantPhone: applicantPhone.trim() } : {}),
+        ...(applicantBio   ? { applicantBio:   applicantBio.trim()   } : {}),
+        ...(mpesaRef       ? { mpesaRef:       mpesaRef.trim()       } : {}),
+        ...(applicationFee ? { applicationFee: parseFloat(applicationFee) } : {}),
         paymentStatus,
       },
     });

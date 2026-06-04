@@ -31,7 +31,7 @@ const videoFilter = (req, file, cb) => {
   else cb(new Error('Only MP4, MOV, and WebM videos are allowed'), false);
 };
 
-const upload      = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5   * 1024 * 1024 }, fileFilter: imageFilter });
+const upload      = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15  * 1024 * 1024 }, fileFilter: imageFilter });
 const uploadDoc   = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10  * 1024 * 1024 }, fileFilter: docFilter   });
 const uploadVideo = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100 * 1024 * 1024 }, fileFilter: videoFilter });
 

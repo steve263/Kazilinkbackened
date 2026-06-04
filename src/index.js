@@ -74,6 +74,7 @@ app.use('/api/analytics',        require('./routes/analytics.routes'));
 app.use('/api/earnings',         require('./routes/earnings.routes'));
 app.use('/api/recommendations',  require('./routes/recommendations.routes'));
 app.use('/api/subscriptions',    require('./routes/subscription.routes'));
+app.use('/api/jobs',             require('./routes/job.routes'));
 
 // Review routes (convenience aliases at /api/reviews)
 const { auth: _auth, requireRole: _role } = require('./middleware/auth');

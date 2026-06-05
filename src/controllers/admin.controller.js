@@ -2410,30 +2410,45 @@ async function approveJobApplication(req, res) {
   try {
     const { appId } = req.params;
 
+    // Admin only verifies payment — does NOT hire the worker
     const application = await prisma.jobApplication.update({
       where: { id: appId },
-      data: { status: 'HIRED', paymentStatus: 'PAID' },
-      include: { job: true },
+      data: { paymentStatus: 'PAYMENT_VERIFIED' },
+      include: {
+        job: {
+          include: { employer: { include: { employerProfile: true } } },
+        },
+      },
     });
 
-    await prisma.job.update({
-      where: { id: application.jobId },
-      data: { workersHired: { increment: 1 } },
-    });
+    // Notify the employer so they can review and hire/reject
+    if (application.job?.employerId) {
+      notificationSvc.createNotification({
+        userId: application.job.employerId,
+        type: 'SYSTEM',
+        title: '👤 New Applicant Ready',
+        body: `${application.applicantName} has applied for "${application.job.title}". Payment verified. Login to review and decide.`,
+      }).catch(console.error);
 
-    const job = await prisma.job.findUnique({ where: { id: application.jobId } });
-    if (job && job.workersHired >= job.workersNeeded) {
-      await prisma.job.update({ where: { id: application.jobId }, data: { status: 'FILLED' } });
+      const employerPhone = application.job.employerPhone
+        || application.job.employer?.employerProfile?.phone;
+      if (employerPhone) {
+        smsSvc.sendSMS(
+          employerPhone,
+          `New applicant for your KaziShow job "${application.job.title}"! ${application.applicantName} (${application.applicantPhone}) applied. Login to kazishow.co.ke to review and hire them.`
+        ).catch(console.error);
+      }
     }
 
+    // SMS to the applicant — payment verified, now waiting for employer
     if (application.applicantPhone) {
       smsSvc.sendSMS(
         application.applicantPhone,
-        `Great news! Your application for "${application.job.title}" has been approved on KaziShow! The employer will call you soon. Good luck! kazishow.co.ke`
+        `Your payment for "${application.job.title}" on KaziShow has been verified! Your application has been sent to the employer. They will review it and call you directly if selected. kazishow.co.ke`
       ).catch(console.error);
     }
 
-    res.json({ success: true, message: 'Application approved' });
+    res.json({ success: true, message: 'Payment verified. Employer notified to review applicant.' });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -2444,23 +2459,24 @@ async function rejectJobApplication(req, res) {
     const { appId } = req.params;
     const { reason } = req.body;
 
+    // Admin rejects payment — worker needs to re-submit correct proof
     const application = await prisma.jobApplication.update({
       where: { id: appId },
       data: {
-        status: 'DECLINED',
         paymentStatus: 'REJECTED',
-        employerNote: reason || '',
+        employerNote: reason || 'Payment not verified',
       },
+      include: { job: true },
     });
 
     if (application.applicantPhone) {
       smsSvc.sendSMS(
         application.applicantPhone,
-        `Your application on KaziShow was not successful this time. Please apply for other jobs at kazishow.co.ke`
+        `Your payment for "${application.job?.title}" on KaziShow could not be verified. Please ensure you paid to Paybill 247247 and paste the correct Equity message. Contact support on 0795542312 if you need help. kazishow.co.ke`
       ).catch(console.error);
     }
 
-    res.json({ success: true, message: 'Application rejected' });
+    res.json({ success: true, message: 'Payment rejected. Worker notified to resubmit.' });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }

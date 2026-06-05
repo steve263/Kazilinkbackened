@@ -12,7 +12,7 @@ async function sendEmail({ to, subject, html }) {
     return;
   }
   try {
-    const from = process.env.EMAIL_FROM || 'KaziShow <noreply@kazishow.co.ke>';
+    const from = process.env.EMAIL_FROM || 'KaziShow <noreply@send.kazishow.co.ke>';
     await axios.post('https://api.resend.com/emails', { from, to, subject, html }, {
       headers: {
         Authorization: `Bearer ${process.env.RESEND_API_KEY}`,

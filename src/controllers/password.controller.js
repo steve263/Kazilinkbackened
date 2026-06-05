@@ -49,11 +49,11 @@ async function forgotPassword(req, res) {
       return res.status(400).json({ success: false, message: 'No email address on this account. Contact support.' });
     }
 
-    emailSvc.sendEmail({
+    await emailSvc.sendEmail({
       to: user.email,
       subject: 'KaziShow — Your Password Reset Code',
       html: emailSvc.tplOTPEmail({ name: user.name, otp }),
-    }).catch(console.error);
+    });
 
     console.log(`🔑 OTP emailed to ${user.name} (${user.email})`);
     res.json({

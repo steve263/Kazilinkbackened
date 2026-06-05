@@ -1,46 +1,29 @@
-const nodemailer = require('nodemailer');
-const dns = require('dns');
+const axios = require('axios');
 
-// Force IPv4 DNS — Railway resolves smtp.gmail.com to IPv6 which is unreachable
-dns.setDefaultResultOrder('ipv4first');
-
-// ─── Transport ────────────────────────────────────────────────────────────────
-
-function createTransport() {
-  return nodemailer.createTransport({
-    host: 'smtp.gmail.com',
-    port: 465,
-    secure: true,
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS,
-    },
-    connectionTimeout: 15000,
-    greetingTimeout: 15000,
-    socketTimeout: 20000,
-  });
-}
+// ─── Send via Resend HTTP API (works on Railway — no SMTP ports needed) ───────
 
 async function sendEmail({ to, subject, html }) {
   if (!to) {
-    console.warn(`⚠️  Email skipped — no recipient address for: "${subject}"`);
+    console.warn(`⚠️  Email skipped — no recipient for: "${subject}"`);
     return;
   }
-  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-    console.error(`❌ Email skipped — EMAIL_USER or EMAIL_PASS not set in environment. Subject: "${subject}"`);
+  if (!process.env.RESEND_API_KEY) {
+    console.error(`❌ Email skipped — RESEND_API_KEY not set. Subject: "${subject}"`);
     return;
   }
   try {
-    const transporter = createTransport();
-    await transporter.sendMail({
-      from: process.env.EMAIL_FROM || `KaziShow <${process.env.EMAIL_USER}>`,
-      to,
-      subject,
-      html,
+    const from = process.env.EMAIL_FROM || 'KaziShow <noreply@kazishow.co.ke>';
+    await axios.post('https://api.resend.com/emails', { from, to, subject, html }, {
+      headers: {
+        Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      timeout: 15000,
     });
     console.log(`✅ Email sent → ${to} | ${subject}`);
   } catch (err) {
-    console.error(`❌ Email FAILED → ${to} | ${subject} | ${err.message}`);
+    const detail = err.response?.data?.message || err.message;
+    console.error(`❌ Email FAILED → ${to} | ${subject} | ${detail}`);
     throw err;
   }
 }

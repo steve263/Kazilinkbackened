@@ -1011,7 +1011,7 @@ async function adminBadges(req, res) {
       prisma.testimonial.count({ where: { status: 'PENDING' } }).catch(() => 0),
       prisma.tip.count({ where: { status: 'PENDING' } }).catch(() => 0),
       prisma.withdrawal.count({ where: { status: 'PENDING' } }).catch(() => 0),
-      prisma.booking.count({ where: { status: 'DISPUTED' } }),
+      prisma.$queryRaw`SELECT COUNT(*)::int FROM "Booking" WHERE status::text = 'DISPUTED'`.then(r => Number(r[0]?.count ?? 0)).catch(() => 0),
       prisma.appeal.count({ where: { status: 'PENDING' } }).catch(() => 0),
       prisma.subscription.count({ where: { status: 'EXPIRED' } }).catch(() => 0),
     ]);
@@ -1374,20 +1374,26 @@ async function rejectVerification(req, res) {
 async function getDisputes(req, res) {
   try {
     const { status } = req.query;
-    const where = { status: status || 'DISPUTED' };
+    const statusFilter = status || 'DISPUTED';
 
-    const disputes = await prisma.booking.findMany({
-      where,
+    // Use raw SQL to avoid Prisma enum validation on DISPUTED
+    const ids = await prisma.$queryRawUnsafe(
+      `SELECT id FROM "Booking" WHERE status::text = $1 ORDER BY "updatedAt" DESC`,
+      statusFilter
+    ).then(rows => rows.map(r => r.id)).catch(() => []);
+
+    const disputesFull = ids.length > 0 ? await prisma.booking.findMany({
+      where: { id: { in: ids } },
       include: {
         customer: { select: { id: true, name: true, phone: true, profilePhoto: true } },
         provider: { include: { user: { select: { id: true, name: true, phone: true, profilePhoto: true } } } },
         service:  { select: { name: true, price: true } },
       },
       orderBy: { updatedAt: 'desc' },
-    });
+    }) : [];
 
     const disputesWithReports = await Promise.all(
-      disputes.map(async (booking) => {
+      disputesFull.map(async (booking) => {
         const report = await prisma.report.findFirst({
           where: { bookingId: booking.id, type: 'JOB_DISPUTE' },
         }).catch(() => null);
@@ -1396,7 +1402,7 @@ async function getDisputes(req, res) {
     );
 
     const [totalDisputed, totalResolved] = await Promise.all([
-      prisma.booking.count({ where: { status: 'DISPUTED' } }),
+      prisma.$queryRaw`SELECT COUNT(*)::int FROM "Booking" WHERE status::text = 'DISPUTED'`.then(r => Number(r[0]?.count ?? 0)).catch(() => 0),
       prisma.booking.count({ where: { status: { in: ['COMPLETED', 'CANCELLED'] }, paymentReleasedAt: { not: null } } }),
     ]);
 

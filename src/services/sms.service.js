@@ -32,21 +32,30 @@ function formatPhone(phone) {
 }
 
 async function sendSMS(phone, message) {
+  // Handle array of phones (broadcast) — send individually
+  if (Array.isArray(phone)) {
+    const results = await Promise.allSettled(phone.map((p) => sendSMS(p, message)));
+    const sent    = results.filter((r) => r.status === 'fulfilled' && r.value?.success).length;
+    const failed  = results.length - sent;
+    if (failed > 0) console.warn(`⚠️ Broadcast SMS: ${sent} sent, ${failed} failed`);
+    return { success: sent > 0, sent, failed };
+  }
+
   console.log('📤 sendSMS called');
   console.log('  To:', phone);
-  console.log('  Message:', message?.slice(0, 80));
+  console.log('  Msg:', message?.slice(0, 80));
 
   try {
     const formattedPhone = formatPhone(phone);
     if (!formattedPhone) {
       console.error('❌ sendSMS skipped — invalid phone:', phone);
-      return { success: false };
+      return { success: false, error: 'invalid_phone' };
     }
 
     const client = getATClient();
     if (!client) {
-      console.error('❌ sendSMS skipped — AT client not available');
-      return { success: false };
+      console.error('❌ sendSMS skipped — AT client not available (check AT_API_KEY / AT_USERNAME env vars)');
+      return { success: false, error: 'client_unavailable' };
     }
 
     const result = await client.SMS.send({
@@ -54,20 +63,67 @@ async function sendSMS(phone, message) {
       message,
     });
 
-    const recipient = result?.SMSMessageData?.Recipients?.[0];
-    console.log('📊 SMS Status:', recipient?.status);
-    console.log('💰 SMS Cost:', recipient?.cost);
+    console.log('📊 AT raw response:', JSON.stringify(result?.SMSMessageData));
 
-    if (recipient?.status === 'Success') {
-      console.log('✅ SMS sent to', formattedPhone);
-      return { success: true };
+    const recipient = result?.SMSMessageData?.Recipients?.[0];
+    const status    = recipient?.status;
+    const cost      = recipient?.cost;
+
+    if (status === 'Success') {
+      console.log(`✅ SMS sent to ${formattedPhone} | cost: ${cost}`);
+      return { success: true, status, cost };
     } else {
-      console.warn('⚠️ SMS not delivered. Status:', recipient?.status, '| Number:', formattedPhone);
-      return { success: false, status: recipient?.status };
+      // Surface the real AT error code so it appears in Railway logs
+      console.error(
+        `❌ SMS FAILED to ${formattedPhone} | AT status: "${status}" | cost: ${cost}` +
+        `\n   Possible causes: AT sandbox (whitelist only), no credits, unregistered sender ID` +
+        `\n   AT_USERNAME: ${process.env.AT_USERNAME || 'NOT SET'}`
+      );
+      return { success: false, status, error: status };
     }
   } catch (err) {
-    console.error('❌ sendSMS error:', err.message);
+    console.error('❌ sendSMS exception:', err.message, err);
     return { success: false, error: err.message };
+  }
+}
+
+async function testSMS(phone, message) {
+  const formattedPhone = formatPhone(phone);
+  const client = getATClient();
+
+  if (!client) {
+    return {
+      success: false,
+      error: 'AT client not available',
+      env: {
+        AT_USERNAME: process.env.AT_USERNAME || 'NOT SET',
+        AT_API_KEY_SET: !!process.env.AT_API_KEY,
+      },
+    };
+  }
+
+  try {
+    const result = await client.SMS.send({
+      to: [formattedPhone || phone],
+      message: message || `KaziShow SMS test at ${new Date().toISOString()}`,
+    });
+
+    const recipients = result?.SMSMessageData?.Recipients || [];
+    const isSandbox  = process.env.AT_USERNAME === 'sandbox';
+
+    return {
+      success: recipients[0]?.status === 'Success',
+      atUsername: process.env.AT_USERNAME,
+      isSandbox,
+      formattedPhone,
+      rawResponse: result?.SMSMessageData,
+      recipients,
+      sandboxWarning: isSandbox
+        ? 'You are in AT SANDBOX mode. Only whitelisted numbers receive SMS. Go to https://account.africastalking.com/apps/sandbox/config and add the phone to Sandbox Whitelist, OR switch to your live API key.'
+        : null,
+    };
+  } catch (err) {
+    return { success: false, error: err.message, stack: err.stack };
   }
 }
 
@@ -123,6 +179,7 @@ function tplOrderCompletedCustomer(businessName) {
 module.exports = {
   sendSMS,
   sendOTP,
+  testSMS,
   formatPhone,
   tplNewBookingProvider,
   tplBookingAcceptedCustomer,

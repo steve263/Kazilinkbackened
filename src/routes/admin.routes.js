@@ -204,6 +204,9 @@ router.put('/subscriptions/payments/:paymentId/reject', ...adminOnly, async (req
 router.get('/schedule',        ...adminOnly, ctrl.getSchedule);
 router.post('/schedule/remind', ...adminOnly, ctrl.sendReminder);
 
+// SMS diagnostics — test if AT is working
+router.post('/sms/test',                              ...adminOnly, ctrl.adminTestSMS);
+
 // Job applications — admin approves or rejects
 router.get('/job-applications',                               ...adminOnly, ctrl.getJobApplications);
 router.put('/job-applications/:appId/approve',                ...adminOnly, ctrl.approveJobApplication);

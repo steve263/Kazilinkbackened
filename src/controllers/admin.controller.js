@@ -2291,6 +2291,7 @@ module.exports = {
   exportFinanceData,
   getSchedule,
   sendReminder,
+  adminTestSMS,
   verifyJobPayment,
   rejectJobPayment,
   getJobApplications,
@@ -2401,6 +2402,21 @@ async function getJobApplications(req, res) {
     });
 
     res.json({ success: true, data: applications });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+async function adminTestSMS(req, res) {
+  try {
+    const { phone, message } = req.body;
+    if (!phone) return res.status(400).json({ success: false, message: 'phone is required' });
+
+    const smsSvc = require('../services/sms.service');
+    const result = await smsSvc.testSMS(phone, message);
+
+    console.log('🔬 Admin SMS test result:', JSON.stringify(result));
+    res.json({ success: true, data: result });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }

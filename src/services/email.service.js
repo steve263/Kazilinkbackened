@@ -1,4 +1,8 @@
 const nodemailer = require('nodemailer');
+const dns = require('dns');
+
+// Force IPv4 DNS — Railway resolves smtp.gmail.com to IPv6 which is unreachable
+dns.setDefaultResultOrder('ipv4first');
 
 // ─── Transport ────────────────────────────────────────────────────────────────
 
@@ -7,7 +11,6 @@ function createTransport() {
     host: 'smtp.gmail.com',
     port: 465,
     secure: true,
-    family: 4,
     auth: {
       user: process.env.EMAIL_USER,
       pass: process.env.EMAIL_PASS,

@@ -1,6 +1,5 @@
 const bcrypt = require('bcryptjs');
 const prisma = require('../config/db');
-const smsSvc = require('../services/sms.service');
 const emailSvc = require('../services/email.service');
 
 // In-memory OTP store keyed by phone OR email
@@ -46,30 +45,22 @@ async function forgotPassword(req, res) {
     otpStore.set(normalizePhone(user.phone), record);
     if (user.email) otpStore.set(user.email.toLowerCase(), record);
 
-    let sent = [];
-
-    // Send via email if user has one
-    if (user.email) {
-      emailSvc.sendEmail({
-        to: user.email,
-        subject: 'KaziShow — Your Password Reset Code',
-        html: emailSvc.tplOTPEmail({ name: user.name, otp }),
-      }).catch(console.error);
-      sent.push('email');
+    if (!user.email) {
+      return res.status(400).json({ success: false, message: 'No email address on this account. Contact support.' });
     }
 
-    // Also send via SMS
-    smsSvc.sendOTP(normalizePhone(user.phone), otp).catch(console.error);
-    sent.push('SMS');
+    emailSvc.sendEmail({
+      to: user.email,
+      subject: 'KaziShow — Your Password Reset Code',
+      html: emailSvc.tplOTPEmail({ name: user.name, otp }),
+    }).catch(console.error);
 
-    console.log(`🔑 OTP sent to ${user.name} via ${sent.join(' + ')}`);
+    console.log(`🔑 OTP emailed to ${user.name} (${user.email})`);
     res.json({
       success: true,
       data: {
-        message: user.email
-          ? `Code sent to your email (${user.email.replace(/(.{2}).*(@.*)/, '$1***$2')}) and phone`
-          : 'Code sent to your phone number',
-        sentVia: sent,
+        message: `Code sent to ${user.email.replace(/(.{2}).*(@.*)/, '$1***$2')}`,
+        sentVia: ['email'],
       },
     });
   } catch (err) {

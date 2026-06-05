@@ -49,13 +49,17 @@ async function forgotPassword(req, res) {
       return res.status(400).json({ success: false, message: 'No email address on this account. Contact support.' });
     }
 
-    await emailSvc.sendEmail({
+    // Fire email — don't await so the response is instant; errors appear in Railway logs
+    emailSvc.sendEmail({
       to: user.email,
       subject: 'KaziShow — Your Password Reset Code',
       html: emailSvc.tplOTPEmail({ name: user.name, otp }),
+    }).then(() => {
+      console.log(`✅ Forgot-password OTP emailed to ${user.email}`);
+    }).catch((err) => {
+      console.error(`❌ Forgot-password OTP email FAILED for ${user.email}:`, err.message);
     });
 
-    console.log(`🔑 OTP emailed to ${user.name} (${user.email})`);
     res.json({
       success: true,
       data: {

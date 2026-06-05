@@ -529,6 +529,210 @@ function tplJobRejected({ applicantName, jobTitle }) {
   `);
 }
 
+// 15. New booking — to provider
+function tplNewBookingToProvider({ providerName, customerName, customerPhone, serviceName, scheduledDate, scheduledTime, address, totalAmount }) {
+  const dateStr = scheduledDate ? new Date(scheduledDate).toLocaleDateString('en-KE', { weekday: 'short', day: 'numeric', month: 'short' }) : '';
+  return layout(`
+    <div style="text-align:center;margin-bottom:24px;">
+      <div style="font-size:52px;margin-bottom:8px;">📅</div>
+      <h2 style="margin:0 0 8px;color:#1a1714;font-size:22px;font-weight:900;">New Booking!</h2>
+      <p style="color:#6b7280;font-size:14px;margin:0;">Hi <strong>${providerName}</strong>, a customer just booked you.</p>
+    </div>
+
+    <div style="background:#fff7f3;border:1.5px solid #ffd5bc;border-radius:12px;padding:20px;margin-bottom:20px;">
+      <table width="100%" cellpadding="0" cellspacing="0">
+        <tr><td style="padding:4px 0;color:#6b7280;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;">Service</td></tr>
+        <tr><td style="padding:0 0 10px;color:#1a1714;font-weight:800;font-size:16px;">${serviceName || 'Requested service'}</td></tr>
+        <tr><td style="padding:4px 0;color:#6b7280;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;">Customer</td></tr>
+        <tr><td style="padding:0 0 10px;color:#1a1714;font-weight:700;font-size:14px;">${customerName} · <span style="color:#FF6B2B;">${customerPhone || ''}</span></td></tr>
+        ${scheduledDate ? `<tr><td style="padding:4px 0;color:#6b7280;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;">Date &amp; Time</td></tr>
+        <tr><td style="padding:0 0 10px;color:#1a1714;font-weight:700;font-size:14px;">${dateStr}${scheduledTime ? ' at ' + scheduledTime : ''}</td></tr>` : ''}
+        ${address ? `<tr><td style="padding:4px 0;color:#6b7280;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;">Location</td></tr>
+        <tr><td style="padding:0 0 10px;color:#1a1714;font-size:14px;">📍 ${address}</td></tr>` : ''}
+        <tr><td style="padding:4px 0;color:#6b7280;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;">Amount</td></tr>
+        <tr><td style="color:#FF6B2B;font-weight:900;font-size:18px;">KSh ${totalAmount || 0}</td></tr>
+      </table>
+    </div>
+
+    <div style="background:#f0fdf4;border-left:4px solid #10b981;border-radius:0 10px 10px 0;padding:14px 18px;margin-bottom:20px;">
+      <p style="margin:0;color:#166534;font-size:13px;font-weight:700;">Action required</p>
+      <p style="margin:4px 0 0;color:#374151;font-size:13px;">Log in to KaziShow to accept or decline this booking before it expires.</p>
+    </div>
+
+    <div style="text-align:center;">
+      <a href="https://kazishow.co.ke" style="display:inline-block;background:linear-gradient(135deg,#FF6B2B,#FF8C42);color:#ffffff;text-decoration:none;font-size:14px;font-weight:800;padding:12px 32px;border-radius:50px;">
+        View Booking →
+      </a>
+    </div>
+  `);
+}
+
+// 16. Commission confirmed — to provider
+function tplCommissionConfirmed({ providerName, amount, serviceName }) {
+  return layout(`
+    <div style="text-align:center;margin-bottom:24px;">
+      <div style="font-size:52px;margin-bottom:8px;">✅</div>
+      <h2 style="margin:0 0 8px;color:#1a1714;font-size:22px;font-weight:900;">Commission Confirmed!</h2>
+      <p style="color:#6b7280;font-size:14px;margin:0;">Hi <strong>${providerName}</strong>, your account is fully active.</p>
+    </div>
+
+    <div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:12px;padding:20px;margin-bottom:20px;">
+      <p style="margin:0 0 4px;color:#166534;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;">Commission paid</p>
+      <p style="margin:0 0 8px;color:#166534;font-size:32px;font-weight:900;">KSh ${amount}</p>
+      ${serviceName ? `<p style="margin:0;color:#16a34a;font-size:13px;">For: ${serviceName}</p>` : ''}
+    </div>
+
+    <p style="color:#374151;font-size:14px;line-height:1.7;margin:0 0 20px;">
+      Your commission has been verified. Your account is fully active and you will continue to receive bookings on KaziShow.
+    </p>
+
+    <div style="text-align:center;">
+      <a href="https://kazishow.co.ke" style="display:inline-block;background:linear-gradient(135deg,#FF6B2B,#FF8C42);color:#ffffff;text-decoration:none;font-size:14px;font-weight:800;padding:12px 32px;border-radius:50px;">
+        View Dashboard →
+      </a>
+    </div>
+  `);
+}
+
+// 17. Commission rejected — to provider
+function tplCommissionRejected({ providerName, amount, reason }) {
+  return layout(`
+    <div style="text-align:center;margin-bottom:24px;">
+      <div style="font-size:52px;margin-bottom:8px;">❌</div>
+      <h2 style="margin:0 0 8px;color:#1a1714;font-size:22px;font-weight:900;">Payment Not Verified</h2>
+      <p style="color:#6b7280;font-size:14px;margin:0;">Hi <strong>${providerName}</strong>, action required.</p>
+    </div>
+
+    <div style="background:#fef2f2;border:1.5px solid #fca5a5;border-radius:12px;padding:20px;margin-bottom:20px;">
+      <p style="margin:0 0 4px;color:#991b1b;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;">Reason</p>
+      <p style="margin:0;color:#7f1d1d;font-size:14px;font-weight:600;">${reason || 'M-Pesa code could not be verified'}</p>
+    </div>
+
+    <p style="color:#374151;font-size:14px;line-height:1.7;margin:0 0 16px;">
+      Please pay <strong>KSh ${amount}</strong> to Equity Paybill <strong>247247</strong>, Account <strong>0795542312</strong> and submit the confirmation SMS again.
+    </p>
+
+    <div style="background:#fff7f3;border:1.5px solid #ffd5bc;border-radius:12px;padding:16px;text-align:center;margin-bottom:20px;">
+      <p style="margin:0;color:#6b7280;font-size:12px;">Need help? Contact us</p>
+      <p style="margin:4px 0 0;color:#FF6B2B;font-weight:800;">WhatsApp: 0795542312</p>
+    </div>
+
+    <div style="text-align:center;">
+      <a href="https://kazishow.co.ke" style="display:inline-block;background:linear-gradient(135deg,#FF6B2B,#FF8C42);color:#ffffff;text-decoration:none;font-size:14px;font-weight:800;padding:12px 32px;border-radius:50px;">
+        Submit Payment →
+      </a>
+    </div>
+  `);
+}
+
+// 18. Commission waived — to provider
+function tplCommissionWaived({ providerName, amount }) {
+  return layout(`
+    <div style="text-align:center;margin-bottom:24px;">
+      <div style="font-size:52px;margin-bottom:8px;">🎁</div>
+      <h2 style="margin:0 0 8px;color:#1a1714;font-size:22px;font-weight:900;">Commission Waived!</h2>
+      <p style="color:#6b7280;font-size:14px;margin:0;">Hi <strong>${providerName}</strong>, great news!</p>
+    </div>
+
+    <div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:12px;padding:20px;text-align:center;margin-bottom:20px;">
+      <p style="margin:0 0 4px;color:#166534;font-size:13px;">Amount waived</p>
+      <p style="margin:0;color:#166534;font-size:32px;font-weight:900;">KSh ${amount}</p>
+    </div>
+
+    <p style="color:#374151;font-size:14px;line-height:1.7;margin:0 0 20px;">
+      KaziShow admin has waived your outstanding commission of KSh ${amount}. Your account is fully active — keep getting bookings!
+    </p>
+
+    <div style="text-align:center;">
+      <a href="https://kazishow.co.ke" style="display:inline-block;background:linear-gradient(135deg,#FF6B2B,#FF8C42);color:#ffffff;text-decoration:none;font-size:14px;font-weight:800;padding:12px 32px;border-radius:50px;">
+        View Dashboard →
+      </a>
+    </div>
+  `);
+}
+
+// 19. Outstanding commission / account suspended — to provider
+function tplCommissionOutstanding({ providerName, amount }) {
+  return layout(`
+    <div style="text-align:center;margin-bottom:24px;">
+      <div style="font-size:52px;margin-bottom:8px;">🚨</div>
+      <h2 style="margin:0 0 8px;color:#1a1714;font-size:22px;font-weight:900;">Outstanding Commission</h2>
+      <p style="color:#6b7280;font-size:14px;margin:0;">Hi <strong>${providerName}</strong>, your account has been suspended.</p>
+    </div>
+
+    <div style="background:#fef2f2;border:2px solid #f87171;border-radius:12px;padding:20px;text-align:center;margin-bottom:20px;">
+      <p style="margin:0 0 4px;color:#991b1b;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;">Amount owed</p>
+      <p style="margin:0;color:#dc2626;font-size:36px;font-weight:900;">KSh ${amount}</p>
+    </div>
+
+    <p style="color:#374151;font-size:14px;line-height:1.7;margin:0 0 16px;">
+      Your account has been suspended due to an unpaid commission. To reactivate your account, pay via:
+    </p>
+
+    <div style="background:#fff7f3;border:1.5px solid #ffd5bc;border-radius:12px;padding:18px;margin-bottom:20px;">
+      <p style="margin:0 0 6px;color:#374151;font-size:13px;"><strong>Equity Paybill:</strong> 247247</p>
+      <p style="margin:0 0 6px;color:#374151;font-size:13px;"><strong>Account:</strong> 0795542312</p>
+      <p style="margin:0 0 12px;color:#374151;font-size:13px;"><strong>Amount:</strong> KSh ${amount}</p>
+      <p style="margin:0;color:#6b7280;font-size:12px;">After payment, send the M-Pesa confirmation SMS to WhatsApp <strong>0795542312</strong></p>
+    </div>
+
+    <div style="text-align:center;">
+      <a href="https://kazishow.co.ke" style="display:inline-block;background:linear-gradient(135deg,#FF6B2B,#FF8C42);color:#ffffff;text-decoration:none;font-size:14px;font-weight:800;padding:12px 32px;border-radius:50px;">
+        Pay &amp; Reactivate →
+      </a>
+    </div>
+  `);
+}
+
+// 20. Subscription activated — to provider
+function tplSubscriptionActivated({ providerName, planName, periodEnd }) {
+  const endStr = periodEnd ? new Date(periodEnd).toLocaleDateString('en-KE', { day: 'numeric', month: 'long', year: 'numeric' }) : '';
+  return layout(`
+    <div style="text-align:center;margin-bottom:24px;">
+      <div style="font-size:52px;margin-bottom:8px;">🚀</div>
+      <h2 style="margin:0 0 8px;color:#1a1714;font-size:22px;font-weight:900;">Subscription Active!</h2>
+      <p style="color:#6b7280;font-size:14px;margin:0;">Hi <strong>${providerName}</strong>, your plan is now live.</p>
+    </div>
+
+    <div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:12px;padding:20px;text-align:center;margin-bottom:20px;">
+      <p style="margin:0 0 4px;color:#166534;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;">Plan</p>
+      <p style="margin:0 0 8px;color:#166534;font-size:24px;font-weight:900;">${planName} Plan</p>
+      ${endStr ? `<p style="margin:0;color:#16a34a;font-size:13px;">Active until <strong>${endStr}</strong></p>` : ''}
+    </div>
+
+    <p style="color:#374151;font-size:14px;line-height:1.7;margin:0 0 20px;">
+      Your subscription is active for 30 days. Keep your profile updated and respond quickly to bookings to get the most out of KaziShow.
+    </p>
+
+    <div style="text-align:center;">
+      <a href="https://kazishow.co.ke" style="display:inline-block;background:linear-gradient(135deg,#FF6B2B,#FF8C42);color:#ffffff;text-decoration:none;font-size:14px;font-weight:800;padding:12px 32px;border-radius:50px;">
+        View Dashboard →
+      </a>
+    </div>
+  `);
+}
+
+// 21. Schedule reminder — admin to provider
+function tplScheduleReminder({ providerName, message }) {
+  return layout(`
+    <div style="text-align:center;margin-bottom:24px;">
+      <div style="font-size:52px;margin-bottom:8px;">⏰</div>
+      <h2 style="margin:0 0 8px;color:#1a1714;font-size:22px;font-weight:900;">Reminder from KaziShow</h2>
+      <p style="color:#6b7280;font-size:14px;margin:0;">Hi <strong>${providerName}</strong></p>
+    </div>
+
+    <div style="background:#fff7f3;border:1.5px solid #ffd5bc;border-radius:12px;padding:20px;margin-bottom:20px;">
+      <p style="margin:0;color:#374151;font-size:15px;line-height:1.7;">${message}</p>
+    </div>
+
+    <div style="text-align:center;">
+      <a href="https://kazishow.co.ke" style="display:inline-block;background:linear-gradient(135deg,#FF6B2B,#FF8C42);color:#ffffff;text-decoration:none;font-size:14px;font-weight:800;padding:12px 32px;border-radius:50px;">
+        Open KaziShow →
+      </a>
+    </div>
+  `);
+}
+
 // ─── Exports ──────────────────────────────────────────────────────────────────
 
 module.exports = {
@@ -547,4 +751,11 @@ module.exports = {
   tplEmployerNewApplicant,
   tplJobHired,
   tplJobRejected,
+  tplNewBookingToProvider,
+  tplCommissionConfirmed,
+  tplCommissionRejected,
+  tplCommissionWaived,
+  tplCommissionOutstanding,
+  tplSubscriptionActivated,
+  tplScheduleReminder,
 };

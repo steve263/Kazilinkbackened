@@ -1644,6 +1644,18 @@ async function confirmCommission(req, res) {
       `KaziShow: ✅ Commission of KSh ${commission.commissionAmount} confirmed! Your account is fully active. Keep getting bookings on kazishow.co.ke`
     ).catch(console.error);
 
+    if (commission.provider.user.email) {
+      emailSvc.sendEmail({
+        to: commission.provider.user.email,
+        subject: 'KaziShow — Commission Confirmed ✅',
+        html: emailSvc.tplCommissionConfirmed({
+          providerName: commission.provider.user.name,
+          amount: commission.commissionAmount,
+          serviceName: commission.booking?.service?.name,
+        }),
+      }).catch(console.error);
+    }
+
     res.json({ success: true, data: { message: 'Commission confirmed. Fundi notified.' } });
   } catch (err) {
     console.error('confirmCommission error:', err.message);
@@ -1672,6 +1684,18 @@ async function rejectCommission(req, res) {
       commission.provider.user.phone,
       `KaziShow: ❌ Commission payment rejected. ${reason || 'Please pay KSh ' + commission.commissionAmount + ' to Paybill 247247 Account 0795542312 and submit the M-Pesa SMS again.'}`
     ).catch(console.error);
+
+    if (commission.provider.user.email) {
+      emailSvc.sendEmail({
+        to: commission.provider.user.email,
+        subject: 'KaziShow — Commission Payment Not Verified',
+        html: emailSvc.tplCommissionRejected({
+          providerName: commission.provider.user.name,
+          amount: commission.commissionAmount,
+          reason,
+        }),
+      }).catch(console.error);
+    }
 
     res.json({ success: true, data: { message: 'Rejected. Fundi notified to pay again.' } });
   } catch (err) {
@@ -1704,6 +1728,17 @@ async function waiveCommission(req, res) {
       commission.provider.user.phone,
       `KaziShow: 🎁 Your commission of KSh ${commission.commissionAmount} has been waived! Account fully active. Keep getting bookings!`
     ).catch(console.error);
+
+    if (commission.provider.user.email) {
+      emailSvc.sendEmail({
+        to: commission.provider.user.email,
+        subject: 'KaziShow — Commission Waived 🎁',
+        html: emailSvc.tplCommissionWaived({
+          providerName: commission.provider.user.name,
+          amount: commission.commissionAmount,
+        }),
+      }).catch(console.error);
+    }
 
     res.json({ success: true, data: { message: 'Commission waived. Fundi notified.' } });
   } catch (err) {
@@ -1741,6 +1776,17 @@ async function suspendForCommission(req, res) {
       commission.provider.user.phone,
       `KaziShow: 🚨 SUSPENDED! Unpaid commission of KSh ${commission.commissionAmount}. Pay via M-Pesa Paybill 247247 Account 0795542312 then WhatsApp 0795542312 to reactivate.`
     ).catch(console.error);
+
+    if (commission.provider.user.email) {
+      emailSvc.sendEmail({
+        to: commission.provider.user.email,
+        subject: 'KaziShow — Account Suspended: Outstanding Commission',
+        html: emailSvc.tplCommissionOutstanding({
+          providerName: commission.provider.user.name,
+          amount: commission.commissionAmount,
+        }),
+      }).catch(console.error);
+    }
 
     res.json({ success: true, data: { message: 'Provider suspended. They have been notified.' } });
   } catch (err) {
@@ -2157,15 +2203,29 @@ async function getSchedule(req, res) {
 
 async function sendReminder(req, res) {
   try {
-    const { providerPhone, message, method } = req.body;
-    if (!providerPhone || !message) {
-      return res.status(400).json({ success: false, message: 'providerPhone and message are required' });
+    const { providerPhone, providerEmail, providerName, message, method } = req.body;
+    if (!message) {
+      return res.status(400).json({ success: false, message: 'message is required' });
     }
-    if (method === 'sms') {
+
+    const sent = [];
+
+    if (method === 'sms' && providerPhone) {
       await smsSvc.sendSMS(providerPhone, message);
+      sent.push('SMS');
     }
-    console.log(`✅ Schedule reminder sent to ${providerPhone} via ${method}`);
-    res.json({ success: true, message: 'Reminder sent' });
+
+    if (providerEmail) {
+      emailSvc.sendEmail({
+        to: providerEmail,
+        subject: 'KaziShow — Booking Reminder',
+        html: emailSvc.tplScheduleReminder({ providerName: providerName || 'Provider', message }),
+      }).catch(console.error);
+      sent.push('email');
+    }
+
+    console.log(`✅ Schedule reminder sent to ${providerPhone || providerEmail} via ${sent.join(' + ')}`);
+    res.json({ success: true, message: `Reminder sent via ${sent.join(' + ') || 'no channel'}` });
   } catch (err) {
     console.error('sendReminder error:', err.message);
     res.status(500).json({ success: false, message: err.message });

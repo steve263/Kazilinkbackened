@@ -4,6 +4,7 @@ const trustSvc = require('../services/trust.service');
 const socketSvc = require('../services/socket.service');
 const mpesaSvc = require('../services/mpesa.service');
 const smsSvc = require('../services/sms.service');
+const emailSvc = require('../services/email.service');
 
 const BOOKING_INCLUDE = {
   customer: { select: { id: true, name: true, phone: true, location: true, deviceToken: true } },
@@ -156,6 +157,24 @@ async function createBooking(req, res) {
         req.user.phone,
         `Your KaziShow booking has been submitted! We will notify you once ${provider.businessName} confirms. Track your booking at kazishow.co.ke`
       ).catch(console.error);
+    }
+
+    // Email to provider — new booking alert
+    if (provider.user.email) {
+      emailSvc.sendEmail({
+        to: provider.user.email,
+        subject: `KaziShow — New Booking from ${req.user.name}`,
+        html: emailSvc.tplNewBookingToProvider({
+          providerName: provider.user.name,
+          customerName: req.user.name,
+          customerPhone: req.user.phone,
+          serviceName: serviceNames || booking.service?.name,
+          scheduledDate: booking.scheduledDate,
+          scheduledTime: booking.scheduledTime,
+          address: booking.address,
+          totalAmount: booking.totalAmount,
+        }),
+      }).catch(console.error);
     }
 
     res.status(201).json({ success: true, data: booking });

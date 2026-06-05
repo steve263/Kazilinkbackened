@@ -180,6 +180,19 @@ router.put('/subscriptions/:id/confirm-payment', ...adminOnly, async (req, res) 
         sub.provider.user.phone,
         `KaziShow: Your ${planNames[planName] || 'Starter'} subscription is now ACTIVE for 30 days! Keep getting bookings on kazishow.co.ke`
       ).catch(console.error);
+
+      const emailSvc = require('../services/email.service');
+      if (sub.provider.user.email) {
+        emailSvc.sendEmail({
+          to: sub.provider.user.email,
+          subject: 'KaziShow — Subscription Activated 🚀',
+          html: emailSvc.tplSubscriptionActivated({
+            providerName: sub.provider.user.name,
+            planName: planNames[planName] || 'Starter',
+            periodEnd,
+          }),
+        }).catch(console.error);
+      }
     }
 
     res.json({ success: true, data: { message: 'Subscription activated' } });

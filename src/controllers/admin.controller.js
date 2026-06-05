@@ -2294,6 +2294,8 @@ module.exports = {
   verifyJobPayment,
   rejectJobPayment,
   getJobApplications,
+  approveJobApplication,
+  rejectJobApplication,
 };
 
 // ─── Job Application Payment Verification ─────────────────────────────────────
@@ -2384,6 +2386,7 @@ async function getJobApplications(req, res) {
             title: true,
             location: true,
             pay: true,
+            employerPhone: true,
             employer: {
               select: {
                 id: true,
@@ -2398,6 +2401,66 @@ async function getJobApplications(req, res) {
     });
 
     res.json({ success: true, data: applications });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+async function approveJobApplication(req, res) {
+  try {
+    const { appId } = req.params;
+
+    const application = await prisma.jobApplication.update({
+      where: { id: appId },
+      data: { status: 'HIRED', paymentStatus: 'PAID' },
+      include: { job: true },
+    });
+
+    await prisma.job.update({
+      where: { id: application.jobId },
+      data: { workersHired: { increment: 1 } },
+    });
+
+    const job = await prisma.job.findUnique({ where: { id: application.jobId } });
+    if (job && job.workersHired >= job.workersNeeded) {
+      await prisma.job.update({ where: { id: application.jobId }, data: { status: 'FILLED' } });
+    }
+
+    if (application.applicantPhone) {
+      smsSvc.sendSMS(
+        application.applicantPhone,
+        `Great news! Your application for "${application.job.title}" has been approved on KaziShow! The employer will call you soon. Good luck! kazishow.co.ke`
+      ).catch(console.error);
+    }
+
+    res.json({ success: true, message: 'Application approved' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+async function rejectJobApplication(req, res) {
+  try {
+    const { appId } = req.params;
+    const { reason } = req.body;
+
+    const application = await prisma.jobApplication.update({
+      where: { id: appId },
+      data: {
+        status: 'DECLINED',
+        paymentStatus: 'REJECTED',
+        employerNote: reason || '',
+      },
+    });
+
+    if (application.applicantPhone) {
+      smsSvc.sendSMS(
+        application.applicantPhone,
+        `Your application on KaziShow was not successful this time. Please apply for other jobs at kazishow.co.ke`
+      ).catch(console.error);
+    }
+
+    res.json({ success: true, message: 'Application rejected' });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }

@@ -204,8 +204,10 @@ router.put('/subscriptions/payments/:paymentId/reject', ...adminOnly, async (req
 router.get('/schedule',        ...adminOnly, ctrl.getSchedule);
 router.post('/schedule/remind', ...adminOnly, ctrl.sendReminder);
 
-// Job applications — admin verifies payment only
+// Job applications — admin approves or rejects
 router.get('/job-applications',                               ...adminOnly, ctrl.getJobApplications);
+router.put('/job-applications/:appId/approve',                ...adminOnly, ctrl.approveJobApplication);
+router.put('/job-applications/:appId/reject',                 ...adminOnly, ctrl.rejectJobApplication);
 router.put('/job-applications/:appId/verify-payment',         ...adminOnly, ctrl.verifyJobPayment);
 router.put('/job-applications/:appId/reject-payment',         ...adminOnly, ctrl.rejectJobPayment);
 

@@ -159,6 +159,7 @@ async function postJob(req, res) {
       title, description, category, location, address,
       pay, payType, workersNeeded, startDate, endDate,
       duration, skills, requirements, isUrgent,
+      employerPhone, applicationFee,
     } = req.body;
 
     if (!title?.trim() || !description?.trim() || !category || !location?.trim() || !pay || !startDate) {
@@ -198,6 +199,8 @@ async function postJob(req, res) {
         skills:         skills?.trim() || null,
         requirements:   requirements?.trim() || null,
         isUrgent:       isUrgent === 'true' || isUrgent === true,
+        employerPhone:  employerPhone?.trim() || null,
+        applicationFee: applicationFee ? parseFloat(applicationFee) : 100,
       },
     });
 
@@ -220,8 +223,12 @@ async function postJob(req, res) {
 async function applyForJob(req, res) {
   try {
     const { jobId } = req.params;
-    const { workerNote, applicantName, applicantPhone, applicantBio, mpesaRef, applicationFee } = req.body;
+    const { applicantName, applicantPhone, applicantBio, mpesaRef } = req.body;
     const workerId = req.user.id;
+
+    if (!applicantName || !applicantPhone || !applicantBio || !mpesaRef) {
+      return res.status(400).json({ success: false, message: 'All fields are required' });
+    }
 
     const existing = await prisma.jobApplication.findFirst({ where: { jobId, workerId } });
     if (existing) {
@@ -236,36 +243,39 @@ async function applyForJob(req, res) {
       return res.status(400).json({ success: false, message: 'This job is no longer available' });
     }
     if (job.workersHired >= job.workersNeeded) {
-      return res.status(400).json({ success: false, message: 'This job is already fully filled' });
+      return res.status(400).json({ success: false, message: 'No vacancy — all spots filled' });
     }
-
-    // Determine payment status: if applicant provided M-Pesa ref, mark as pending verification
-    const isPaidFlow = !!(applicantName && applicantPhone && mpesaRef);
-    const paymentStatus = isPaidFlow ? 'PENDING_VERIFICATION' : 'PENDING';
 
     const application = await prisma.jobApplication.create({
       data: {
-        id:        randomUUID(),
+        id:             randomUUID(),
         jobId,
         workerId,
-        ...(workerNote     ? { workerNote:     workerNote.trim()     } : {}),
-        ...(applicantName  ? { applicantName:  applicantName.trim()  } : {}),
-        ...(applicantPhone ? { applicantPhone: applicantPhone.trim() } : {}),
-        ...(applicantBio   ? { applicantBio:   applicantBio.trim()   } : {}),
-        ...(mpesaRef       ? { mpesaRef:       mpesaRef.trim()       } : {}),
-        ...(applicationFee ? { applicationFee: parseFloat(applicationFee) } : {}),
-        paymentStatus,
+        applicantName:  applicantName.trim(),
+        applicantPhone: applicantPhone.trim(),
+        applicantBio:   applicantBio.trim(),
+        mpesaRef:       mpesaRef.trim(),
+        applicationFee: job.applicationFee || 100,
+        paymentStatus:  'PENDING_VERIFICATION',
       },
     });
 
-    // Notify employer
-    const employerPhone = job.employer?.employerProfile?.phone;
-    if (employerPhone) {
-      smsSvc.sendSMS(
-        employerPhone,
-        `New application for "${job.title}" on KaziShow! ${applicantName || req.user.name} applied. Open KaziShow to review and hire. kazishow.co.ke`
-      ).catch(console.error);
+    // Notify all admins
+    const admins = await prisma.user.findMany({ where: { role: 'ADMIN' } });
+    for (const admin of admins) {
+      require('../services/notification.service').createNotification({
+        userId: admin.id,
+        type: 'SYSTEM',
+        title: '💼 New Job Application',
+        body: `${applicantName} applied for "${job.title}". M-Pesa submitted. Verify and approve.`,
+      }).catch(console.error);
     }
+
+    // SMS to applicant
+    smsSvc.sendSMS(
+      applicantPhone.trim(),
+      `Application submitted for "${job.title}" on KaziShow! Admin will verify your payment within 1 hour. The employer will call you if selected. kazishow.co.ke`
+    ).catch(console.error);
 
     res.json({ success: true, data: application, message: 'Application submitted!' });
   } catch (err) {

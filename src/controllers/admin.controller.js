@@ -109,17 +109,21 @@ async function approveProvider(req, res) {
       include: { user: true },
     });
 
-    console.log(`✅ Admin approved provider: ${provider.businessName}`);
+    console.log(`✅ Admin approved provider: ${provider.businessName} | email: ${provider.user.email || 'NONE'}`);
 
     smsSvc
       .sendSMS(provider.user.phone, `Congratulations! Your KaziShow profile has been approved. You are now live on the platform. Download the app: kazishow.co.ke`)
       .catch(console.error);
 
-    emailSvc.sendEmail({
-      to: provider.user.email,
-      subject: '🎉 Your KaziShow Profile is Now Live!',
-      html: emailSvc.tplProviderApproved({ providerName: provider.user.name, businessName: provider.businessName }),
-    }).catch(console.error);
+    if (provider.user.email) {
+      emailSvc.sendEmail({
+        to: provider.user.email,
+        subject: '🎉 Your KaziShow Profile is Now Live!',
+        html: emailSvc.tplProviderApproved({ providerName: provider.user.name, businessName: provider.businessName }),
+      }).catch(console.error);
+    } else {
+      console.warn(`⚠️  approveProvider: no email on user ${provider.userId} — email not sent`);
+    }
 
     prisma.notification.create({
       data: {
@@ -147,17 +151,21 @@ async function rejectProvider(req, res) {
       include: { user: true },
     });
 
-    console.log(`❌ Admin rejected provider: ${provider.businessName} — ${reason}`);
+    console.log(`❌ Admin rejected provider: ${provider.businessName} — ${reason} | email: ${provider.user.email || 'NONE'}`);
 
     smsSvc
       .sendSMS(provider.user.phone, `Your KaziShow application was not approved. Reason: ${reason}. Please reapply with correct documents.`)
       .catch(console.error);
 
-    emailSvc.sendEmail({
-      to: provider.user.email,
-      subject: 'Your KaziShow Application Was Not Approved',
-      html: emailSvc.tplProviderRejected({ providerName: provider.user.name, businessName: provider.businessName, reason }),
-    }).catch(console.error);
+    if (provider.user.email) {
+      emailSvc.sendEmail({
+        to: provider.user.email,
+        subject: 'Your KaziShow Application Was Not Approved',
+        html: emailSvc.tplProviderRejected({ providerName: provider.user.name, businessName: provider.businessName, reason }),
+      }).catch(console.error);
+    } else {
+      console.warn(`⚠️  rejectProvider: no email on user ${provider.userId} — email not sent`);
+    }
 
     res.json({ success: true, data: provider });
   } catch (err) {

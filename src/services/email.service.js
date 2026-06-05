@@ -15,8 +15,12 @@ function createTransport() {
 }
 
 async function sendEmail({ to, subject, html }) {
-  if (!to || !process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-    console.log(`📧 Email skipped (no email address or SMTP config): ${subject}`);
+  if (!to) {
+    console.warn(`⚠️  Email skipped — no recipient address for: "${subject}"`);
+    return;
+  }
+  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+    console.error(`❌ Email skipped — EMAIL_USER or EMAIL_PASS not set in environment. Subject: "${subject}"`);
     return;
   }
   try {
@@ -27,9 +31,10 @@ async function sendEmail({ to, subject, html }) {
       subject,
       html,
     });
-    console.log(`📧 Email sent to ${to}: ${subject}`);
+    console.log(`✅ Email sent → ${to} | ${subject}`);
   } catch (err) {
-    console.error(`❌ Email failed to ${to}:`, err.message);
+    console.error(`❌ Email FAILED → ${to} | ${subject} | ${err.message}`);
+    throw err;
   }
 }
 

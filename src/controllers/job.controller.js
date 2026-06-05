@@ -277,6 +277,14 @@ async function applyForJob(req, res) {
       `Application submitted for "${job.title}" on KaziShow! Admin will verify your payment within 1 hour. The employer will call you if selected. kazishow.co.ke`
     ).catch(console.error);
 
+    // SMS to employer when someone new applies
+    if (job.employerPhone) {
+      smsSvc.sendSMS(
+        job.employerPhone,
+        `New application on KaziShow! ${applicantName} has applied for your job "${job.title}". Login to kazishow.co.ke to review applicants once payment is verified.`
+      ).catch(console.error);
+    }
+
     res.json({ success: true, data: application, message: 'Application submitted!' });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -562,6 +570,133 @@ async function getWorkerById(req, res) {
   }
 }
 
+// ─── Employer Dashboard ───────────────────────────────────────────────────────
+
+async function getEmployerDashboard(req, res) {
+  try {
+    const employerId = req.user.id;
+
+    const jobs = await prisma.job.findMany({
+      where: { employerId },
+      include: {
+        applications: {
+          include: {
+            worker: { select: { name: true, phone: true } },
+          },
+          orderBy: { createdAt: 'desc' },
+        },
+        _count: { select: { applications: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const totalJobs         = jobs.length;
+    const totalApplications = jobs.reduce((sum, j) => sum + j._count.applications, 0);
+    const totalHired        = jobs.reduce((sum, j) => sum + j.applications.filter((a) => a.status === 'HIRED').length, 0);
+    const pendingReview     = jobs.reduce((sum, j) => sum + j.applications.filter((a) => a.paymentStatus === 'PAYMENT_VERIFIED' && a.status === 'PENDING').length, 0);
+
+    res.json({
+      success: true,
+      data: {
+        stats: { totalJobs, totalApplications, totalHired, pendingReview },
+        jobs,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+// ─── Get verified applicants for a specific job ───────────────────────────────
+
+async function getJobApplicants(req, res) {
+  try {
+    const { jobId } = req.params;
+    const employerId = req.user.id;
+
+    const job = await prisma.job.findFirst({ where: { id: jobId, employerId } });
+    if (!job) return res.status(403).json({ success: false, message: 'Job not found' });
+
+    const applications = await prisma.jobApplication.findMany({
+      where: {
+        jobId,
+        paymentStatus: { in: ['PAYMENT_VERIFIED', 'PAID'] },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    res.json({ success: true, data: { job, applications } });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+// ─── Employer hires applicant ─────────────────────────────────────────────────
+
+async function employerHire(req, res) {
+  try {
+    const { appId } = req.params;
+    const employerId = req.user.id;
+
+    const application = await prisma.jobApplication.findUnique({
+      where: { id: appId },
+      include: { job: true },
+    });
+    if (!application) return res.status(404).json({ success: false, message: 'Application not found' });
+    if (application.job.employerId !== employerId) return res.status(403).json({ success: false, message: 'Unauthorized' });
+
+    await prisma.jobApplication.update({ where: { id: appId }, data: { status: 'HIRED' } });
+
+    await prisma.job.update({
+      where: { id: application.jobId },
+      data: { workersHired: { increment: 1 } },
+    });
+
+    const updatedJob = await prisma.job.findUnique({ where: { id: application.jobId } });
+    if (updatedJob && updatedJob.workersHired >= updatedJob.workersNeeded) {
+      await prisma.job.update({ where: { id: application.jobId }, data: { status: 'FILLED' } });
+    }
+
+    if (application.applicantPhone) {
+      smsSvc.sendSMS(
+        application.applicantPhone,
+        `Congratulations ${application.applicantName}! You have been selected for "${application.job.title}" on KaziShow. Please contact the employer on ${application.job.employerPhone || 'the number provided'} to confirm and get started. Well done! kazishow.co.ke`
+      ).catch(console.error);
+    }
+
+    res.json({ success: true, message: 'Applicant hired successfully' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+// ─── Employer rejects applicant ───────────────────────────────────────────────
+
+async function employerReject(req, res) {
+  try {
+    const { appId } = req.params;
+
+    const application = await prisma.jobApplication.findUnique({
+      where: { id: appId },
+      include: { job: true },
+    });
+    if (!application) return res.status(404).json({ success: false, message: 'Application not found' });
+
+    await prisma.jobApplication.update({ where: { id: appId }, data: { status: 'DECLINED' } });
+
+    if (application.applicantPhone) {
+      smsSvc.sendSMS(
+        application.applicantPhone,
+        `Hi ${application.applicantName}, thank you for applying for "${application.job.title}" on KaziShow. Unfortunately you were not selected this time. Keep applying for more jobs at kazishow.co.ke. Good luck!`
+      ).catch(console.error);
+    }
+
+    res.json({ success: true, message: 'Applicant declined' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
 module.exports = {
   getAllJobs, getJobById,
   registerWorker, registerEmployer,
@@ -572,4 +707,6 @@ module.exports = {
   getMyPostedJobs, getWorkerProfile,
   getEmployerProfile, updateAvailability,
   getAllWorkers, getWorkerById,
+  getEmployerDashboard, getJobApplicants,
+  employerHire, employerReject,
 };

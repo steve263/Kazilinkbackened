@@ -21,6 +21,10 @@ router.get('/worker/applications', auth, ctrl.getMyApplications);
 router.post('/employer/register', auth, ctrl.registerEmployer);
 router.get('/employer/profile',   auth, ctrl.getEmployerProfile);
 router.get('/employer/jobs',      auth, ctrl.getMyPostedJobs);
+router.get('/employer/dashboard', auth, ctrl.getEmployerDashboard);
+router.get('/employer/jobs/:jobId/applicants',    auth, ctrl.getJobApplicants);
+router.put('/employer/applications/:appId/hire',  auth, ctrl.employerHire);
+router.put('/employer/applications/:appId/reject',auth, ctrl.employerReject);
 
 // ── Static post route ─────────────────────────────────────────────────────────
 router.post('/post', auth, ctrl.postJob);

@@ -1,6 +1,7 @@
 const prisma = require('../config/db');
 const { randomUUID } = require('crypto');
 const smsSvc = require('../services/sms.service');
+const emailSvc = require('../services/email.service');
 const { cloudinary } = require('../middleware/upload');
 
 // ─── Get all open jobs ────────────────────────────────────────────────────────
@@ -271,11 +272,23 @@ async function applyForJob(req, res) {
       }).catch(console.error);
     }
 
-    // SMS to applicant
+    // Notify applicant (SMS + email)
     smsSvc.sendSMS(
       applicantPhone.trim(),
       `Application submitted for "${job.title}" on KaziShow! Admin will verify your payment within 1 hour. The employer will call you if selected. kazishow.co.ke`
     ).catch(console.error);
+    if (req.user.email) {
+      emailSvc.sendEmail({
+        to: req.user.email,
+        subject: `KaziShow — Application submitted for "${job.title}"`,
+        html: emailSvc.tplJobApplicationSubmitted({
+          applicantName: applicantName.trim(),
+          jobTitle: job.title,
+          jobLocation: job.location,
+          fee: job.applicationFee || 100,
+        }),
+      }).catch(console.error);
+    }
 
     // SMS to employer when someone new applies
     if (job.employerPhone) {
@@ -640,7 +653,7 @@ async function employerHire(req, res) {
 
     const application = await prisma.jobApplication.findUnique({
       where: { id: appId },
-      include: { job: true },
+      include: { job: true, worker: true },
     });
     if (!application) return res.status(404).json({ success: false, message: 'Application not found' });
     if (application.job.employerId !== employerId) return res.status(403).json({ success: false, message: 'Unauthorized' });
@@ -663,6 +676,18 @@ async function employerHire(req, res) {
         `Congratulations ${application.applicantName}! You have been selected for "${application.job.title}" on KaziShow. Please contact the employer on ${application.job.employerPhone || 'the number provided'} to confirm and get started. Well done! kazishow.co.ke`
       ).catch(console.error);
     }
+    if (application.worker?.email) {
+      emailSvc.sendEmail({
+        to: application.worker.email,
+        subject: `KaziShow — You got the job! "${application.job.title}"`,
+        html: emailSvc.tplJobHired({
+          applicantName: application.applicantName,
+          jobTitle: application.job.title,
+          jobLocation: application.job.location,
+          employerPhone: application.job.employerPhone,
+        }),
+      }).catch(console.error);
+    }
 
     res.json({ success: true, message: 'Applicant hired successfully' });
   } catch (err) {
@@ -678,7 +703,7 @@ async function employerReject(req, res) {
 
     const application = await prisma.jobApplication.findUnique({
       where: { id: appId },
-      include: { job: true },
+      include: { job: true, worker: true },
     });
     if (!application) return res.status(404).json({ success: false, message: 'Application not found' });
 
@@ -689,6 +714,16 @@ async function employerReject(req, res) {
         application.applicantPhone,
         `Hi ${application.applicantName}, thank you for applying for "${application.job.title}" on KaziShow. Unfortunately you were not selected this time. Keep applying for more jobs at kazishow.co.ke. Good luck!`
       ).catch(console.error);
+    }
+    if (application.worker?.email) {
+      emailSvc.sendEmail({
+        to: application.worker.email,
+        subject: `KaziShow — Application update for "${application.job.title}"`,
+        html: emailSvc.tplJobRejected({
+          applicantName: application.applicantName,
+          jobTitle: application.job.title,
+        }),
+      }).catch(console.error);
     }
 
     res.json({ success: true, message: 'Applicant declined' });

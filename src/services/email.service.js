@@ -377,6 +377,158 @@ function tplBookingReminder({ name, role, providerName, customerName, customerPh
   `);
 }
 
+// 9. OTP / Password reset
+function tplOTPEmail({ name, otp }) {
+  return layout(`
+    <div style="text-align:center;margin-bottom:28px;">
+      <div style="font-size:52px;margin-bottom:8px;">🔐</div>
+      <h2 style="margin:0 0 8px;color:#1a1714;font-size:24px;font-weight:900;">Password Reset Code</h2>
+      <p style="color:#6b7280;font-size:15px;margin:0;">Hi <strong>${name}</strong>, here is your reset code.</p>
+    </div>
+
+    <div style="background:#fff7f3;border:2px solid #FF6B2B;border-radius:16px;padding:28px;text-align:center;margin-bottom:24px;">
+      <p style="margin:0 0 8px;color:#6b7280;font-size:13px;text-transform:uppercase;letter-spacing:1px;">Your OTP Code</p>
+      <p style="margin:0;color:#FF6B2B;font-size:42px;font-weight:900;letter-spacing:10px;">${otp}</p>
+      <p style="margin:12px 0 0;color:#9ca3af;font-size:12px;">Valid for 10 minutes · Do not share this code</p>
+    </div>
+
+    <p style="color:#6b7280;font-size:13px;text-align:center;margin:0;">
+      If you did not request this, please ignore this email. Your account is safe.
+    </p>
+  `);
+}
+
+// 10. Job application submitted (to applicant)
+function tplJobApplicationSubmitted({ applicantName, jobTitle, jobLocation, fee }) {
+  return layout(`
+    <div style="text-align:center;margin-bottom:24px;">
+      <div style="font-size:52px;margin-bottom:8px;">📋</div>
+      <h2 style="margin:0 0 8px;color:#1a1714;font-size:22px;font-weight:900;">Application Submitted!</h2>
+      <p style="color:#6b7280;font-size:14px;margin:0;">Hi <strong>${applicantName}</strong>, your application is being reviewed.</p>
+    </div>
+
+    <div style="background:#fff7f3;border:1.5px solid #ffd5bc;border-radius:12px;padding:20px;margin-bottom:20px;">
+      <p style="margin:0 0 4px;color:#FF6B2B;font-weight:800;font-size:16px;">${jobTitle}</p>
+      <p style="margin:0;color:#6b7280;font-size:13px;">📍 ${jobLocation}</p>
+      <p style="margin:8px 0 0;color:#374151;font-size:13px;">Application fee paid: <strong>KSh ${fee}</strong></p>
+    </div>
+
+    <div style="background:#f0fdf4;border-left:4px solid #10b981;border-radius:0 10px 10px 0;padding:14px 18px;margin-bottom:20px;">
+      <p style="margin:0;color:#166534;font-size:13px;font-weight:700;">What happens next?</p>
+      <p style="margin:4px 0 0;color:#374151;font-size:13px;">Admin will verify your Equity payment within 1 hour. Once verified, the employer will review and call you if selected.</p>
+    </div>
+
+    <div style="text-align:center;">
+      <a href="https://kazishow.co.ke/jobs" style="display:inline-block;background:linear-gradient(135deg,#FF6B2B,#FF8C42);color:#ffffff;text-decoration:none;font-size:14px;font-weight:800;padding:12px 32px;border-radius:50px;">
+        View My Applications →
+      </a>
+    </div>
+  `);
+}
+
+// 11. Payment verified — to applicant
+function tplJobPaymentVerified({ applicantName, jobTitle }) {
+  return layout(`
+    <div style="text-align:center;margin-bottom:24px;">
+      <div style="font-size:52px;margin-bottom:8px;">✅</div>
+      <h2 style="margin:0 0 8px;color:#1a1714;font-size:22px;font-weight:900;">Payment Verified!</h2>
+      <p style="color:#6b7280;font-size:14px;margin:0;">Hi <strong>${applicantName}</strong>, great news!</p>
+    </div>
+
+    <p style="color:#374151;font-size:14px;line-height:1.7;margin:0 0 20px;">
+      Your payment for <strong>"${jobTitle}"</strong> has been verified by KaziShow. Your application has been sent to the employer. They will review it and contact you directly if you are selected.
+    </p>
+
+    <div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:12px;padding:18px;text-align:center;margin-bottom:20px;">
+      <p style="margin:0;color:#166534;font-size:14px;font-weight:700;">Keep your phone on! 📱</p>
+      <p style="margin:6px 0 0;color:#16a34a;font-size:13px;">The employer may call you at any time.</p>
+    </div>
+
+    <div style="text-align:center;">
+      <a href="https://kazishow.co.ke/jobs" style="display:inline-block;background:linear-gradient(135deg,#FF6B2B,#FF8C42);color:#ffffff;text-decoration:none;font-size:14px;font-weight:800;padding:12px 32px;border-radius:50px;">
+        View Application →
+      </a>
+    </div>
+  `);
+}
+
+// 12. Employer notified — payment verified (to employer)
+function tplEmployerNewApplicant({ jobTitle, applicantName, applicantPhone }) {
+  return layout(`
+    <div style="text-align:center;margin-bottom:24px;">
+      <div style="font-size:52px;margin-bottom:8px;">👤</div>
+      <h2 style="margin:0 0 8px;color:#1a1714;font-size:22px;font-weight:900;">New Verified Applicant!</h2>
+      <p style="color:#6b7280;font-size:14px;margin:0;">Someone applied for your job and payment is confirmed.</p>
+    </div>
+
+    <div style="background:#fff7f3;border:1.5px solid #ffd5bc;border-radius:12px;padding:20px;margin-bottom:20px;">
+      <p style="margin:0 0 4px;color:#6b7280;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;">Job</p>
+      <p style="margin:0 0 12px;color:#1a1714;font-weight:800;font-size:16px;">${jobTitle}</p>
+      <p style="margin:0 0 4px;color:#6b7280;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;">Applicant</p>
+      <p style="margin:0 0 4px;color:#1a1714;font-weight:700;font-size:15px;">${applicantName}</p>
+      <p style="margin:0;color:#FF6B2B;font-weight:700;font-size:14px;">📞 ${applicantPhone}</p>
+    </div>
+
+    <div style="text-align:center;">
+      <a href="https://kazishow.co.ke/jobs/employer" style="display:inline-block;background:linear-gradient(135deg,#FF6B2B,#FF8C42);color:#ffffff;text-decoration:none;font-size:14px;font-weight:800;padding:12px 32px;border-radius:50px;">
+        Review Applicant →
+      </a>
+    </div>
+  `);
+}
+
+// 13. Hired — to applicant
+function tplJobHired({ applicantName, jobTitle, jobLocation, employerPhone }) {
+  return layout(`
+    <div style="text-align:center;margin-bottom:24px;">
+      <div style="font-size:52px;margin-bottom:8px;">🎉</div>
+      <h2 style="margin:0 0 8px;color:#1a1714;font-size:22px;font-weight:900;">You Got the Job!</h2>
+      <p style="color:#6b7280;font-size:14px;margin:0;">Congratulations <strong>${applicantName}</strong>!</p>
+    </div>
+
+    <div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:12px;padding:20px;margin-bottom:20px;">
+      <p style="margin:0 0 4px;color:#166534;font-weight:800;font-size:16px;">${jobTitle}</p>
+      <p style="margin:0;color:#16a34a;font-size:13px;">📍 ${jobLocation}</p>
+    </div>
+
+    <p style="color:#374151;font-size:14px;line-height:1.7;margin:0 0 16px;">
+      The employer has selected you! Please contact them to confirm your start date and details.
+    </p>
+
+    <div style="background:#fff7f3;border:2px solid #FF6B2B;border-radius:12px;padding:18px;text-align:center;margin-bottom:20px;">
+      <p style="margin:0 0 4px;color:#6b7280;font-size:12px;">Call the employer now</p>
+      <p style="margin:0;color:#FF6B2B;font-size:22px;font-weight:900;">📞 ${employerPhone || 'Check your KaziShow app'}</p>
+    </div>
+
+    <div style="text-align:center;">
+      <a href="https://kazishow.co.ke/jobs" style="display:inline-block;background:linear-gradient(135deg,#FF6B2B,#FF8C42);color:#ffffff;text-decoration:none;font-size:14px;font-weight:800;padding:12px 32px;border-radius:50px;">
+        Open KaziShow →
+      </a>
+    </div>
+  `);
+}
+
+// 14. Rejected — to applicant
+function tplJobRejected({ applicantName, jobTitle }) {
+  return layout(`
+    <div style="text-align:center;margin-bottom:24px;">
+      <div style="font-size:52px;margin-bottom:8px;">💪</div>
+      <h2 style="margin:0 0 8px;color:#1a1714;font-size:22px;font-weight:900;">Keep Applying!</h2>
+      <p style="color:#6b7280;font-size:14px;margin:0;">Hi <strong>${applicantName}</strong></p>
+    </div>
+
+    <p style="color:#374151;font-size:14px;line-height:1.7;margin:0 0 20px;">
+      Thank you for applying for <strong>"${jobTitle}"</strong> on KaziShow. Unfortunately, the employer selected another candidate this time. Don't give up — new jobs are posted daily!
+    </p>
+
+    <div style="text-align:center;">
+      <a href="https://kazishow.co.ke/jobs" style="display:inline-block;background:linear-gradient(135deg,#FF6B2B,#FF8C42);color:#ffffff;text-decoration:none;font-size:14px;font-weight:800;padding:12px 32px;border-radius:50px;">
+        Browse More Jobs →
+      </a>
+    </div>
+  `);
+}
+
 // ─── Exports ──────────────────────────────────────────────────────────────────
 
 module.exports = {
@@ -389,4 +541,10 @@ module.exports = {
   tplTestimonialApproved,
   tplTestimonialRejected,
   tplBookingReminder,
+  tplOTPEmail,
+  tplJobApplicationSubmitted,
+  tplJobPaymentVerified,
+  tplEmployerNewApplicant,
+  tplJobHired,
+  tplJobRejected,
 };

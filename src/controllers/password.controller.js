@@ -1,8 +1,9 @@
 const bcrypt = require('bcryptjs');
 const prisma = require('../config/db');
 const smsSvc = require('../services/sms.service');
+const emailSvc = require('../services/email.service');
 
-// In-memory OTP store: phone -> { otp, expiresAt, verified }
+// In-memory OTP store keyed by phone OR email
 const otpStore = new Map();
 
 function generateOTP() {
@@ -16,24 +17,61 @@ function normalizePhone(raw) {
   return p;
 }
 
+function isEmail(val) {
+  return val.includes('@');
+}
+
 async function forgotPassword(req, res) {
   try {
-    const { phone } = req.body;
-    if (!phone) return res.status(400).json({ success: false, message: 'phone is required' });
+    const { phone, email } = req.body;
+    const raw = (email || phone || '').trim();
+    if (!raw) return res.status(400).json({ success: false, message: 'phone or email is required' });
 
-    const normalPhone = normalizePhone(phone);
-    const user = await prisma.user.findUnique({ where: { phone: normalPhone } });
+    let user;
+    if (isEmail(raw)) {
+      user = await prisma.user.findFirst({ where: { email: raw.toLowerCase() } });
+    } else {
+      user = await prisma.user.findUnique({ where: { phone: normalizePhone(raw) } });
+    }
+
     if (!user) {
-      return res.status(404).json({ success: false, message: 'No account found with that phone number' });
+      return res.status(404).json({ success: false, message: 'No account found with that phone or email' });
     }
 
     const otp = generateOTP();
-    otpStore.set(normalPhone, { otp, expiresAt: new Date(Date.now() + 10 * 60 * 1000), verified: false });
+    const expiry = new Date(Date.now() + 10 * 60 * 1000);
+    const record = { otp, expiresAt: expiry, verified: false, userId: user.id };
 
-    await smsSvc.sendOTP(normalPhone, otp);
+    // Store by both phone and email so either can be used in verify step
+    otpStore.set(normalizePhone(user.phone), record);
+    if (user.email) otpStore.set(user.email.toLowerCase(), record);
 
-    console.log(`🔑 Password reset OTP sent to ${normalPhone}`);
-    res.json({ success: true, data: { message: 'OTP sent to your phone number' } });
+    let sent = [];
+
+    // Send via email if user has one
+    if (user.email) {
+      emailSvc.sendEmail({
+        to: user.email,
+        subject: 'KaziShow — Your Password Reset Code',
+        html: emailSvc.tplOTPEmail({ name: user.name, otp }),
+      }).catch(console.error);
+      sent.push('email');
+    }
+
+    // Also send via SMS
+    smsSvc.sendOTP(normalizePhone(user.phone), otp).catch(console.error);
+    sent.push('SMS');
+
+    console.log(`🔑 OTP sent to ${user.name} via ${sent.join(' + ')}`);
+    res.json({
+      success: true,
+      data: {
+        message: user.email
+          ? `Code sent to your email (${user.email.replace(/(.{2}).*(@.*)/, '$1***$2')}) and phone`
+          : 'Code sent to your phone number',
+        sentVia: sent,
+      },
+    });
   } catch (err) {
     console.error('❌ forgotPassword error:', err.message);
     res.status(500).json({ success: false, message: err.message });
@@ -42,20 +80,21 @@ async function forgotPassword(req, res) {
 
 async function verifyOTP(req, res) {
   try {
-    const { phone, otp } = req.body;
-    if (!phone || !otp) return res.status(400).json({ success: false, message: 'phone and otp are required' });
+    const { phone, email, otp } = req.body;
+    const raw = (email || phone || '').trim();
+    if (!raw || !otp) return res.status(400).json({ success: false, message: 'identifier and otp are required' });
 
-    const normalPhone = normalizePhone(phone);
-    const record = otpStore.get(normalPhone);
+    const key = isEmail(raw) ? raw.toLowerCase() : normalizePhone(raw);
+    const record = otpStore.get(key);
 
-    if (!record) return res.status(400).json({ success: false, message: 'No OTP requested for this number. Please request a new code.' });
+    if (!record) return res.status(400).json({ success: false, message: 'No OTP requested. Please request a new code.' });
     if (new Date() > record.expiresAt) {
-      otpStore.delete(normalPhone);
+      otpStore.delete(key);
       return res.status(400).json({ success: false, message: 'OTP has expired. Please request a new one.' });
     }
     if (record.otp !== String(otp)) return res.status(400).json({ success: false, message: 'Incorrect code. Please try again.' });
 
-    otpStore.set(normalPhone, { ...record, verified: true });
+    record.verified = true;
     res.json({ success: true, data: { message: 'OTP verified successfully' } });
   } catch (err) {
     console.error('❌ verifyOTP error:', err.message);
@@ -65,22 +104,23 @@ async function verifyOTP(req, res) {
 
 async function resetPassword(req, res) {
   try {
-    const { phone, password } = req.body;
-    if (!phone || !password) return res.status(400).json({ success: false, message: 'phone and password are required' });
+    const { phone, email, password } = req.body;
+    const raw = (email || phone || '').trim();
+    if (!raw || !password) return res.status(400).json({ success: false, message: 'identifier and password are required' });
     if (password.length < 6) return res.status(400).json({ success: false, message: 'Password must be at least 6 characters' });
 
-    const normalPhone = normalizePhone(phone);
-    const record = otpStore.get(normalPhone);
+    const key = isEmail(raw) ? raw.toLowerCase() : normalizePhone(raw);
+    const record = otpStore.get(key);
 
     if (!record || !record.verified) {
       return res.status(400).json({ success: false, message: 'Please verify your OTP first' });
     }
 
     const hashed = await bcrypt.hash(password, 12);
-    await prisma.user.update({ where: { phone: normalPhone }, data: { password: hashed } });
+    await prisma.user.update({ where: { id: record.userId }, data: { password: hashed } });
 
-    otpStore.delete(normalPhone);
-    console.log(`🔑 Password reset for ${normalPhone}`);
+    otpStore.delete(key);
+    console.log(`🔑 Password reset for user ${record.userId}`);
     res.json({ success: true, data: { message: 'Password reset successfully. You can now log in.' } });
   } catch (err) {
     console.error('❌ resetPassword error:', err.message);

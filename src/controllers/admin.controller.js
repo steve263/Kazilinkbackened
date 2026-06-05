@@ -2434,6 +2434,7 @@ async function approveJobApplication(req, res) {
         job: {
           include: { employer: { include: { employerProfile: true } } },
         },
+        worker: true,
       },
     });
 
@@ -2454,14 +2455,35 @@ async function approveJobApplication(req, res) {
           `New applicant for your KaziShow job "${application.job.title}"! ${application.applicantName} (${application.applicantPhone}) applied. Login to kazishow.co.ke to review and hire them.`
         ).catch(console.error);
       }
+      if (application.job.employer?.email) {
+        emailSvc.sendEmail({
+          to: application.job.employer.email,
+          subject: `KaziShow — New verified applicant for "${application.job.title}"`,
+          html: emailSvc.tplEmployerNewApplicant({
+            jobTitle: application.job.title,
+            applicantName: application.applicantName,
+            applicantPhone: application.applicantPhone,
+          }),
+        }).catch(console.error);
+      }
     }
 
-    // SMS to the applicant — payment verified, now waiting for employer
+    // Notify applicant — payment verified, now waiting for employer
     if (application.applicantPhone) {
       smsSvc.sendSMS(
         application.applicantPhone,
         `Your payment for "${application.job.title}" on KaziShow has been verified! Your application has been sent to the employer. They will review it and call you directly if selected. kazishow.co.ke`
       ).catch(console.error);
+    }
+    if (application.worker?.email) {
+      emailSvc.sendEmail({
+        to: application.worker.email,
+        subject: `KaziShow — Payment verified for "${application.job.title}"`,
+        html: emailSvc.tplJobPaymentVerified({
+          applicantName: application.applicantName,
+          jobTitle: application.job.title,
+        }),
+      }).catch(console.error);
     }
 
     res.json({ success: true, message: 'Payment verified. Employer notified to review applicant.' });
@@ -2482,7 +2504,7 @@ async function rejectJobApplication(req, res) {
         paymentStatus: 'REJECTED',
         employerNote: reason || 'Payment not verified',
       },
-      include: { job: true },
+      include: { job: true, worker: true },
     });
 
     if (application.applicantPhone) {
@@ -2490,6 +2512,16 @@ async function rejectJobApplication(req, res) {
         application.applicantPhone,
         `Your payment for "${application.job?.title}" on KaziShow could not be verified. Please ensure you paid to Paybill 247247 and paste the correct Equity message. Contact support on 0795542312 if you need help. kazishow.co.ke`
       ).catch(console.error);
+    }
+    if (application.worker?.email) {
+      emailSvc.sendEmail({
+        to: application.worker.email,
+        subject: `KaziShow — Payment could not be verified`,
+        html: emailSvc.tplJobRejected({
+          applicantName: application.applicantName,
+          jobTitle: application.job?.title || 'your job',
+        }),
+      }).catch(console.error);
     }
 
     res.json({ success: true, message: 'Payment rejected. Worker notified to resubmit.' });

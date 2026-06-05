@@ -58,10 +58,10 @@ async function sendSMS(phone, message) {
       return { success: false, error: 'client_unavailable' };
     }
 
-    const result = await client.SMS.send({
-      to: [formattedPhone],
-      message,
-    });
+    const sendOpts = { to: [formattedPhone], message };
+    if (process.env.AT_SENDER_ID) sendOpts.from = process.env.AT_SENDER_ID;
+
+    const result = await client.SMS.send(sendOpts);
 
     console.log('📊 AT raw response:', JSON.stringify(result?.SMSMessageData));
 
@@ -103,10 +103,13 @@ async function testSMS(phone, message) {
   }
 
   try {
-    const result = await client.SMS.send({
+    const sendOpts = {
       to: [formattedPhone || phone],
       message: message || `KaziShow SMS test at ${new Date().toISOString()}`,
-    });
+    };
+    if (process.env.AT_SENDER_ID) sendOpts.from = process.env.AT_SENDER_ID;
+
+    const result = await client.SMS.send(sendOpts);
 
     const recipients = result?.SMSMessageData?.Recipients || [];
     const isSandbox  = process.env.AT_USERNAME === 'sandbox';

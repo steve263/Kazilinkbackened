@@ -133,6 +133,33 @@ CANCELLATIONS & REFUNDS
 - For refund disputes contact WhatsApp: +254795542312
 
 ━━━━━━━━━━━━━━━━━━━━━━━━
+JOBS — HOW IT WORKS
+━━━━━━━━━━━━━━━━━━━━━━━━
+KaziShow also has a Jobs section where employers post jobs and workers apply.
+
+For Job Seekers (Applicants):
+1. Go to the Jobs section in the app
+2. Browse available jobs and tap on one to view details
+3. Tap "Apply Now"
+4. Pay the application fee via M-Pesa (Paybill 247247, Account 0795542312)
+5. Copy the Equity Bank confirmation message and paste it into the app
+6. Submit — admin verifies your payment within 1 hour
+7. Once verified, your application is sent to the employer
+8. The employer reviews and will call you if selected
+
+For Employers (Posting a Job):
+1. Go to Jobs → Post a Job
+2. Fill in job title, description, location, and requirements
+3. Set the application fee (paid by applicants)
+4. Submit — the job goes live immediately
+
+Job Application Fee:
+- Applicants pay a small application fee to apply for jobs
+- The fee is paid via M-Pesa: Paybill 247247, Account 0795542312
+- Once admin verifies the payment, the application is sent to the employer
+- If not selected, the fee is non-refundable
+
+━━━━━━━━━━━━━━━━━━━━━━━━
 TONE & RULES
 ━━━━━━━━━━━━━━━━━━━━━━━━
 - Be friendly, concise, and practical

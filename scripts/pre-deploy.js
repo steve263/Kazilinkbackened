@@ -97,6 +97,17 @@ async function applyDirectMigrations() {
        AND b."paymentMethod" = 'MPESA'`
   );
 
+  // ── Video audio columns ────────────────────────────────────────────────────
+
+  const videoCols = [
+    [`Video.audioUrl`,  `ALTER TABLE "Video" ADD COLUMN IF NOT EXISTS "audioUrl"  TEXT`],
+    [`Video.audioName`, `ALTER TABLE "Video" ADD COLUMN IF NOT EXISTS "audioName" TEXT`],
+  ];
+
+  for (const [label, sql] of videoCols) {
+    await safeQuery(label, sql);
+  }
+
   // ── JobApplication columns (new paid-application flow) ────────────────────
 
   const jobAppCols = [

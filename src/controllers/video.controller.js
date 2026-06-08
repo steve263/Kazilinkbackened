@@ -69,7 +69,7 @@ async function getVideos(req, res) {
 // POST /api/videos — create video (auth required)
 async function postVideo(req, res) {
   try {
-    const { videoUrl, publicId, caption, hashtags, rating, providerId, thumbnailUrl, duration } = req.body;
+    const { videoUrl, publicId, caption, hashtags, rating, providerId, thumbnailUrl, duration, audioUrl, audioName } = req.body;
 
     if (!videoUrl || !caption?.trim()) {
       return res.status(400).json({ success: false, message: 'videoUrl and caption are required' });
@@ -99,6 +99,8 @@ async function postVideo(req, res) {
         hashtags: parsedHashtags,
         rating: rating ? parseInt(rating) : null,
         duration: duration ? parseInt(duration) : null,
+        audioUrl: audioUrl || null,
+        audioName: audioName ? audioName.trim().slice(0, 100) : null,
       },
       include: {
         user: { select: VIDEO_USER_SELECT },

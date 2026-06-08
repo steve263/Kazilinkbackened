@@ -375,6 +375,8 @@ model Video {
   hashtags     String[]
   rating       Int?
   duration     Int?
+  audioUrl     String?
+  audioName    String?
   views        Int            @default(0)
   likes        Int            @default(0)
   reportCount  Int            @default(0)

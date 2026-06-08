@@ -112,4 +112,20 @@ async function deleteImage(req, res) {
   }
 }
 
-module.exports = { uploadImage, uploadImages, deleteImage, uploadPublic, uploadDocument, uploadVideoFile };
+async function uploadAudioFile(req, res) {
+  try {
+    if (!req.file?.buffer) {
+      return res.status(400).json({ success: false, message: 'No audio provided' });
+    }
+    const result = await streamUpload(req.file.buffer, {
+      folder: 'kazishow/audio',
+      resource_type: 'video', // Cloudinary uses 'video' resource_type for audio
+    });
+    res.json({ success: true, data: { url: result.secure_url, publicId: result.public_id } });
+  } catch (err) {
+    console.error('❌ uploadAudioFile error:', err.message || err);
+    res.status(500).json({ success: false, message: err.message || 'Upload failed' });
+  }
+}
+
+module.exports = { uploadImage, uploadImages, deleteImage, uploadPublic, uploadDocument, uploadVideoFile, uploadAudioFile };

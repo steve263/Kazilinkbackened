@@ -99,8 +99,8 @@ async function postVideo(req, res) {
         hashtags: parsedHashtags,
         rating: rating ? parseInt(rating) : null,
         duration: duration ? parseInt(duration) : null,
-        audioUrl: audioUrl || null,
-        audioName: audioName ? audioName.trim().slice(0, 100) : null,
+        ...(audioUrl  ? { audioUrl:  audioUrl }                          : {}),
+        ...(audioName ? { audioName: audioName.trim().slice(0, 100) }    : {}),
       },
       include: {
         user: { select: VIDEO_USER_SELECT },

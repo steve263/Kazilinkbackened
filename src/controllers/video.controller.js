@@ -1,6 +1,20 @@
 const prisma = require('../config/db');
 const { cloudinary } = require('../middleware/upload');
 
+// Ensure audio columns exist (runs once per process; Railway pre-deploy may not have run yet)
+let _audioColsEnsured = false;
+async function ensureAudioCols() {
+  if (_audioColsEnsured) return;
+  try {
+    await prisma.$executeRawUnsafe(`ALTER TABLE "Video" ADD COLUMN IF NOT EXISTS "audioUrl"  TEXT`);
+    await prisma.$executeRawUnsafe(`ALTER TABLE "Video" ADD COLUMN IF NOT EXISTS "audioName" TEXT`);
+    _audioColsEnsured = true;
+  } catch (e) {
+    // non-fatal — column probably already exists
+    _audioColsEnsured = true;
+  }
+}
+
 const EXPIRY_MS = 24 * 60 * 60 * 1000;
 const activeAfter = () => new Date(Date.now() - EXPIRY_MS);
 const addExpiry = (v) => ({ ...v, expiresAt: new Date(new Date(v.createdAt).getTime() + EXPIRY_MS).toISOString() });
@@ -69,6 +83,7 @@ async function getVideos(req, res) {
 // POST /api/videos — create video (auth required)
 async function postVideo(req, res) {
   try {
+    await ensureAudioCols();
     const { videoUrl, publicId, caption, hashtags, rating, providerId, thumbnailUrl, duration, audioUrl, audioName } = req.body;
 
     if (!videoUrl || !caption?.trim()) {

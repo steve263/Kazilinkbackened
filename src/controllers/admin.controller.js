@@ -2373,7 +2373,6 @@ module.exports = {
   approveJobApplication,
   rejectJobApplication,
   deleteJob,
-  wipeAllData,
 };
 
 // ─── Admin: Delete Scam Job ────────────────────────────────────────────────────
@@ -2636,50 +2635,6 @@ async function rejectJobApplication(req, res) {
 
     res.json({ success: true, message: 'Payment rejected. Worker notified to resubmit.' });
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-}
-
-
-// ─── Wipe All Data (one-time production reset) ─────────────────────────────────
-
-async function wipeAllData(req, res) {
-  try {
-    if (req.body?.confirm !== 'WIPE_PRODUCTION_DATA') {
-      return res.status(400).json({ success: false, message: 'Send { "confirm": "WIPE_PRODUCTION_DATA" } to proceed.' });
-    }
-
-    console.log('🧹 Starting full production data wipe...');
-
-    // TRUNCATE all tables with CASCADE handles FK constraints automatically
-    // Excludes User (handled separately) and AppSettings
-    await prisma.$executeRawUnsafe(`
-      TRUNCATE TABLE
-        "Provider", "ProviderWaitlist", "Service",
-        "Booking", "Payment", "Review", "Message",
-        "Post", "Comment", "Like", "Follow",
-        "Certificate", "PortfolioVideo", "PortfolioPost",
-        "Testimonial", "Tip", "TipComment", "Withdrawal",
-        "Video", "VideoComment", "VideoReport", "VideoLike",
-        "Referral", "Promotion", "Reward",
-        "TrustScore", "Report", "FraudAlert",
-        "VerificationRequest", "SuspensionAppeal",
-        "ProviderAvailability", "AvailabilityException",
-        "Payout", "ProviderLocation", "UserInteraction",
-        "BookingCancellation", "OutstandingCommission",
-        "Subscription", "SubscriptionPayment",
-        "Job", "JobApplication", "WorkerProfile", "EmployerProfile",
-        "Notification"
-      CASCADE
-    `);
-
-    // Delete all non-admin users
-    await prisma.$executeRawUnsafe(`DELETE FROM "User" WHERE role != 'ADMIN'`);
-
-    console.log('✅ Full data wipe complete — admin accounts kept');
-    res.json({ success: true, message: 'All data wiped. Admin account kept. Platform ready for real users.' });
-  } catch (err) {
-    console.error('❌ wipeAllData error:', err.message);
     res.status(500).json({ success: false, message: err.message });
   }
 }

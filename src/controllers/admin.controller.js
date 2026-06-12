@@ -187,6 +187,7 @@ async function getUsers(req, res) {
       where.OR = [
         { name: { contains: search, mode: 'insensitive' } },
         { phone: { contains: search } },
+        { email: { contains: search, mode: 'insensitive' } },
       ];
     }
 
@@ -194,7 +195,7 @@ async function getUsers(req, res) {
       prisma.user.findMany({
         where,
         select: {
-          id: true, name: true, phone: true, role: true,
+          id: true, name: true, phone: true, email: true, role: true,
           location: true, isActive: true, createdAt: true,
           _count: { select: { bookingsAsCustomer: true } },
         },

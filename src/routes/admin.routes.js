@@ -230,6 +230,9 @@ router.put('/job-applications/:appId/reject-payment',         ...adminOnly, ctrl
 // Job moderation — admin can delete scam jobs
 router.delete('/jobs/:jobId',                                 ...adminOnly, ctrl.deleteJob);
 
+// One-time production data wipe
+router.post('/wipe-all-data',                                 ...adminOnly, ctrl.wipeAllData);
+
 
 // ShowReel management (delete only — no approval flow)
 router.get('/videos',                         ...adminOnly, videoCtrl.adminGetVideos);

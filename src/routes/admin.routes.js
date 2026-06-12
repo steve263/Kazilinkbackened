@@ -227,6 +227,9 @@ router.put('/job-applications/:appId/reject',                 ...adminOnly, ctrl
 router.put('/job-applications/:appId/verify-payment',         ...adminOnly, ctrl.verifyJobPayment);
 router.put('/job-applications/:appId/reject-payment',         ...adminOnly, ctrl.rejectJobPayment);
 
+// Job moderation — admin can delete scam jobs
+router.delete('/jobs/:jobId',                                 ...adminOnly, ctrl.deleteJob);
+
 // ShowReel management (delete only — no approval flow)
 router.get('/videos',                         ...adminOnly, videoCtrl.adminGetVideos);
 router.get('/videos/reported',                ...adminOnly, (req, res, next) => { req.query.reported = 'true'; next(); }, videoCtrl.adminGetVideos);

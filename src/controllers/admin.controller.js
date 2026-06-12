@@ -2371,7 +2371,40 @@ module.exports = {
   getJobApplications,
   approveJobApplication,
   rejectJobApplication,
+  deleteJob,
 };
+
+// ─── Admin: Delete Scam Job ────────────────────────────────────────────────────
+
+async function deleteJob(req, res) {
+  try {
+    const { jobId } = req.params;
+
+    const job = await prisma.job.findUnique({
+      where: { id: jobId },
+      include: { employer: { select: { id: true, name: true, phone: true } } },
+    });
+    if (!job) return res.status(404).json({ success: false, message: 'Job not found' });
+
+    // Delete all applications first, then the job
+    await prisma.jobApplication.deleteMany({ where: { jobId } });
+    await prisma.job.delete({ where: { id: jobId } });
+
+    // Notify the employer
+    if (job.employer?.phone) {
+      smsSvc.sendSMS(
+        job.employer.phone,
+        `KaziShow Admin: Your job posting "${job.title}" has been removed for violating our terms of service. If you believe this is an error, contact support on 0795542312. kazishow.co.ke`
+      ).catch(console.error);
+    }
+
+    console.log(`🗑️ Admin deleted scam job: ${job.title} (${jobId})`);
+    res.json({ success: true, message: `Job "${job.title}" deleted and employer notified.` });
+  } catch (err) {
+    console.error('❌ deleteJob error:', err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
 
 // ─── Job Application Payment Verification ─────────────────────────────────────
 
@@ -2458,6 +2491,7 @@ async function getJobApplications(req, res) {
       include: {
         job: {
           select: {
+            id: true,
             title: true,
             location: true,
             pay: true,

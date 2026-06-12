@@ -2373,6 +2373,7 @@ module.exports = {
   approveJobApplication,
   rejectJobApplication,
   deleteJob,
+  wipeDemoData,
 };
 
 // ─── Admin: Delete Scam Job ────────────────────────────────────────────────────
@@ -2635,6 +2636,67 @@ async function rejectJobApplication(req, res) {
 
     res.json({ success: true, message: 'Payment rejected. Worker notified to resubmit.' });
   } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+// ─── Wipe Demo Data (one-time use) ────────────────────────────────────────────
+
+async function wipeDemoData(req, res) {
+  try {
+    // Safety: must pass confirmation string in body
+    if (req.body?.confirm !== 'WIPE_ALL_DEMO_DATA') {
+      return res.status(400).json({ success: false, message: 'Send { "confirm": "WIPE_ALL_DEMO_DATA" } to proceed.' });
+    }
+
+    console.log('🧹 Starting demo data wipe...');
+
+    // Delete in dependency order (children before parents)
+    const steps = [
+      () => prisma.$executeRawUnsafe('DELETE FROM "PostLike"'),
+      () => prisma.$executeRawUnsafe('DELETE FROM "PostComment"'),
+      () => prisma.$executeRawUnsafe('DELETE FROM "Post"'),
+      () => prisma.$executeRawUnsafe('DELETE FROM "JobApplication"'),
+      () => prisma.$executeRawUnsafe('DELETE FROM "Job"'),
+      () => prisma.$executeRawUnsafe('DELETE FROM "VideoLike" WHERE true'),
+      () => prisma.$executeRawUnsafe('DELETE FROM "Video" WHERE true'),
+      () => prisma.$executeRawUnsafe('DELETE FROM "BookingReview" WHERE true'),
+      () => prisma.$executeRawUnsafe('DELETE FROM "Tip" WHERE true'),
+      () => prisma.$executeRawUnsafe('DELETE FROM "OutstandingCommission" WHERE true'),
+      () => prisma.$executeRawUnsafe('DELETE FROM "Commission" WHERE true'),
+      () => prisma.$executeRawUnsafe('DELETE FROM "BookingPayment" WHERE true'),
+      () => prisma.$executeRawUnsafe('DELETE FROM "Booking" WHERE true'),
+      () => prisma.$executeRawUnsafe('DELETE FROM "Notification" WHERE true'),
+      () => prisma.$executeRawUnsafe('DELETE FROM "Follow" WHERE true'),
+      () => prisma.$executeRawUnsafe('DELETE FROM "Report" WHERE true'),
+      () => prisma.$executeRawUnsafe('DELETE FROM "Appeal" WHERE true'),
+      () => prisma.$executeRawUnsafe('DELETE FROM "Dispute" WHERE true'),
+      () => prisma.$executeRawUnsafe('DELETE FROM "SubscriptionPayment" WHERE true'),
+      () => prisma.$executeRawUnsafe('DELETE FROM "Subscription" WHERE true'),
+      () => prisma.$executeRawUnsafe('DELETE FROM "PortfolioPost" WHERE true'),
+      () => prisma.$executeRawUnsafe('DELETE FROM "Certificate" WHERE true'),
+      () => prisma.$executeRawUnsafe('DELETE FROM "VerificationDocument" WHERE true'),
+      () => prisma.$executeRawUnsafe('DELETE FROM "Provider" WHERE true'),
+      () => prisma.$executeRawUnsafe('DELETE FROM "EmployerProfile" WHERE true'),
+      // Delete all non-admin users last
+      () => prisma.$executeRawUnsafe('DELETE FROM "User" WHERE role != \'ADMIN\''),
+    ];
+
+    const results = [];
+    for (const step of steps) {
+      try {
+        const count = await step();
+        results.push({ deleted: count });
+      } catch (e) {
+        // Table may not exist yet or already empty — continue
+        results.push({ skipped: e.message.split('\n')[0] });
+      }
+    }
+
+    console.log('✅ Demo data wipe complete');
+    res.json({ success: true, message: 'All demo data wiped. Admin accounts kept. Platform is ready for real users.', results });
+  } catch (err) {
+    console.error('❌ wipeDemoData error:', err.message);
     res.status(500).json({ success: false, message: err.message });
   }
 }
